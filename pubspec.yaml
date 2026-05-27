@@ -1,0 +1,37 @@
+name: fittimer
+description: 健身训练记录与组间计时器
+publish_to: 'none'
+version: 1.0.1+2
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  sqflite: ^2.3.0
+  path_provider: ^2.1.1
+  path: ^1.8.3
+  intl: ^0.19.0
+  flutter_local_notifications: ^18.0.1
+  permission_handler: ^11.3.0
+  file_picker: 11.0.0
+  http: ^1.2.0
+  geolocator: ^13.0.0
+  shared_preferences: ^2.2.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  flutter_launcher_icons: ^0.14.3
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon.png"
+  adaptive_icon_background: "#FF5722"
+  adaptive_icon_foreground: "assets/icon.png"
+
+flutter:
+  uses-material-design: true
