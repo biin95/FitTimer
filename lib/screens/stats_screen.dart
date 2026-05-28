@@ -272,12 +272,12 @@ class _StatsScreenState extends State<StatsScreen> {
                   _buildSummaryCard(theme),
                   const SizedBox(height: 20),
 
+                  // ── Monthly frequency chart (month only) ──
+                  if (_period == _Period.month) _buildMonthlyChart(theme),
+                  if (_period == _Period.month) const SizedBox(height: 20),
+
                   // ── PR records ──
                   _buildPRSection(theme),
-                  const SizedBox(height: 20),
-
-                  // ── Monthly frequency chart ──
-                  _buildMonthlyChart(theme),
                 ],
               ),
             ),
@@ -359,12 +359,14 @@ class _StatsScreenState extends State<StatsScreen> {
               ],
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                _statTile('本周训练', '$_weekCompletedCount', '次', theme),
-                _statTile('本月训练', '$_monthCompletedCount', '次', theme),
-              ],
-            ),
+            if (_period != _Period.custom) ...[
+              Row(
+                children: [
+                  _statTile('本周训练', '$_weekCompletedCount', '次', theme),
+                  _statTile('本月训练', '$_monthCompletedCount', '次', theme),
+                ],
+              ),
+            ],
           ],
         ),
       ),
@@ -595,30 +597,6 @@ class _StatsScreenState extends State<StatsScreen> {
                           ),
                           Text(
                             '最大重量',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.grey[500],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            pr.bestVolume >= 1000
-                                ? '${(pr.bestVolume / 1000).toStringAsFixed(1)}k kg·次'
-                                : '${pr.bestVolume.toStringAsFixed(0)} kg·次',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: Colors.green[700],
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            '最大训练量',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: Colors.grey[500],
                             ),

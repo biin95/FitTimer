@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:geolocator/geolocator.dart';
+import 'package:geolocator_android/geolocator_android.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart' show currentQuote;
 import '../services/database_service.dart';
@@ -30,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _weatherIcon = '';
   String _weatherFeelsLike = '';
   String _weatherWindSpeed = '';
+  String _weatherTip = '';
   bool _weatherLoading = true;
 
   @override
@@ -39,6 +41,23 @@ class _HomeScreenState extends State<HomeScreen> {
     _databaseService = DatabaseService();
     _loadWorkouts();
     _loadWeather();
+  }
+
+  String _getWeatherTip(String temp, String humidity, String text, String feelsLike) {
+    final t = int.tryParse(temp) ?? 0;
+    final h = int.tryParse(humidity) ?? 0;
+    final fl = int.tryParse(feelsLike) ?? 0;
+
+    if (t >= 38 || fl >= 40) return '🥵 极端高温，减少户外活动';
+    if (t >= 35 || fl >= 38) return '🔥 高温预警，注意防暑降温';
+    if (t >= 30) return '☀️ 天气炎热，注意防晒补水';
+    if (text.contains('雨')) return '🌧️ 出门记得带伞';
+    if (text.contains('雷')) return '⛈️ 雷雨天气，注意安全';
+    if (text.contains('风') && t < 15) return '🌬️ 大风降温，注意保暖';
+    if (h >= 85) return '💧 湿度较高，注意补水';
+    if (t <= 5) return '🥶 天气寒冷，注意保暖';
+    if (t <= 10) return '🧥 天气较冷，适当添衣';
+    return '💪 天气不错，适合训练';
   }
 
   Future<void> _loadWorkouts() async {
@@ -300,16 +319,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 fontSize: 14,
               ),
             ),
-            if (types.isNotEmpty)
+            if (types.isNotEmpty || isCompleted)
               Text(
-                icons,
+                '${icons}${isCompleted ? '✅' : ''}',
                 style: const TextStyle(fontSize: 10),
-              ),
-            // Completed training indicator (green checkmark)
-            if (isCompleted)
-              const Text(
-                '✅',
-                style: TextStyle(fontSize: 10),
               ),
           ],
         ),
@@ -324,21 +337,24 @@ class _HomeScreenState extends State<HomeScreen> {
         date.day == now.day;
   }
 
-  Future<void> _loadWeather() async {
-    log.log('WEATHER', '=== 开始加载天气 ===');
+  void _refreshWeather() {
+    _loadWeather(forceRefresh: true);
+  }
+
+  Future<void> _loadWeather({bool forceRefresh = false}) async {
     try {
       const apiKey = '642e66acb9ca46c58e6372aef43eb5de';
       final prefs = await SharedPreferences.getInstance();
-      log.log('WEATHER', 'API Key: ${apiKey.substring(0,8)}...');
 
-      // Check if weather was already loaded today
-      final lastWeatherDate = prefs.getString('weather_last_date');
-      final today = '${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}';
-      if (lastWeatherDate == today) {
-        // Load from cache, skip network
-        final cached = prefs.getString('weather_cache');
-        if (cached != null) {
-          final data = jsonDecode(cached);
+      // Check if weather was already loaded today (skip if force refresh)
+      if (!forceRefresh) {
+        final lastWeatherDate = prefs.getString('weather_last_date');
+        final today = '${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}';
+        if (lastWeatherDate == today) {
+          // Load from cache, skip network
+          final cached = prefs.getString('weather_cache');
+          if (cached != null) {
+            final data = jsonDecode(cached);
           setState(() {
             _weatherDesc = data['desc'] ?? '';
             _weatherTemp = data['temp'] ?? '';
@@ -348,9 +364,11 @@ class _HomeScreenState extends State<HomeScreen> {
             _weatherFeelsLike = data['feelsLike'] ?? '';
             _weatherWindSpeed = data['windSpeed'] ?? '';
             _weatherLoading = false;
+            _weatherTip = _getWeatherTip(data['temp'] ?? '', data['humidity'] ?? '', data['desc'] ?? '', data['feelsLike'] ?? '');
           });
           log.log('WEATHER', '今天已加载过，从缓存读取');
           return;
+          }
         }
       }
 
@@ -360,13 +378,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
       try {
         bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-        log.log('WEATHER', '定位服务: $serviceEnabled');
         if (serviceEnabled) {
           LocationPermission permission = await Geolocator.checkPermission();
-          log.log('WEATHER', '定位权限: $permission');
           if (permission == LocationPermission.denied) {
             permission = await Geolocator.requestPermission();
-            log.log('WEATHER', '请求权限后: $permission');
           }
           if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
             // Try getLastKnownPosition first (instant)
@@ -378,8 +393,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 log.log('WEATHER', '用lastKnown位置: $lat, $lon');
               } else {
                 Position position = await Geolocator.getCurrentPosition(
-                  timeLimit: const Duration(seconds: 8),
-                  desiredAccuracy: LocationAccuracy.medium,
+                  locationSettings: AndroidSettings(
+                    accuracy: LocationAccuracy.low,
+                    timeLimit: const Duration(seconds: 15),
+                    forceLocationManager: true,
+                  ),
                 );
                 lat = position.latitude;
                 lon = position.longitude;
@@ -391,13 +409,12 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         }
       } catch (e) {
-        log.log('WEATHER', '定位异常: $e');
+        // 定位失败，用默认坐标
       }
 
       // Get location ID via GeoAPI
       const host = 'j554e6799f.re.qweatherapi.com';
       final geoUrl = 'https://$host/geo/v2/city/lookup?location=$lon,$lat&number=1';
-      log.log('WEATHER', 'GeoAPI URL: $geoUrl');
       
       final client = http.Client();
       try {
@@ -409,32 +426,24 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ).timeout(const Duration(seconds: 10));
 
-        log.log('WEATHER', 'GeoAPI 状态码: ${geoResponse.statusCode}');
-        log.log('WEATHER', 'GeoAPI 响应头: ${geoResponse.headers}');
-        log.log('WEATHER', 'GeoAPI Body (前300字): ${geoResponse.body.substring(0, geoResponse.body.length.clamp(0, 300))}');
 
         String locationId = '';
         if (geoResponse.statusCode == 200) {
           final geoData = jsonDecode(geoResponse.body);
-          log.log('WEATHER', 'GeoAPI code: ${geoData['code']}');
           if (geoData['code'] == '200' && geoData['location'] != null && (geoData['location'] as List).isNotEmpty) {
             locationId = geoData['location'][0]['id'];
             _weatherCity = geoData['location'][0]['name'] ?? '';
-            log.log('WEATHER', '城市ID: $locationId, 城市名: $_weatherCity');
           } else {
-            log.log('WEATHER', 'GeoAPI 返回异常: ${geoData['code']}');
           }
         }
 
         if (locationId.isEmpty) {
-          log.log('WEATHER', '城市ID为空, 放弃');
           setState(() => _weatherLoading = false);
           return;
         }
 
         // Get current weather
         final weatherUrl = 'https://$host/v7/weather/now?location=$locationId';
-        log.log('WEATHER', 'Weather URL: $weatherUrl');
         final weatherResponse = await client.get(
           Uri.parse(weatherUrl),
           headers: {
@@ -443,26 +452,22 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         ).timeout(const Duration(seconds: 10));
 
-        log.log('WEATHER', 'Weather 状态码: ${weatherResponse.statusCode}');
-        log.log('WEATHER', 'Weather Body (前300字): ${weatherResponse.body.substring(0, weatherResponse.body.length.clamp(0, 300))}');
 
         if (weatherResponse.statusCode == 200) {
           final weatherData = jsonDecode(weatherResponse.body);
-          log.log('WEATHER', 'Weather code: ${weatherData['code']}');
           if (weatherData['code'] == '200' && weatherData['now'] != null) {
             final now = weatherData['now'];
             setState(() {
-              _weatherDesc = now['text'] ?? '';
-              _weatherTemp = now['temp'] ?? '';
-              _weatherHumidity = now['humidity'] ?? '';
-              _weatherFeelsLike = now['feelsLike'] ?? '';
-              _weatherWindSpeed = now['windSpeed'] ?? '';
+              _weatherDesc = (now['text'] ?? '').toString().trim();
+              _weatherTemp = (now['temp'] ?? '').toString().trim();
+              _weatherHumidity = (now['humidity'] ?? '').toString().trim();
+              _weatherFeelsLike = (now['feelsLike'] ?? '').toString().trim();
+              _weatherWindSpeed = (now['windSpeed'] ?? '').toString().trim();
               _weatherIcon = _getWeatherIcon(now['icon'] ?? '100');
               _weatherLoading = false;
+              _weatherTip = _getWeatherTip(_weatherTemp, _weatherHumidity, _weatherDesc, _weatherFeelsLike);
             });
-            log.log('WEATHER', '天气数据设置成功: $_weatherDesc $_weatherTemp°C');
           } else {
-            log.log('WEATHER', 'Weather 返回异常: ${weatherData['code']}');
           }
         }
 
@@ -478,15 +483,11 @@ class _HomeScreenState extends State<HomeScreen> {
           'timestamp': DateTime.now().millisecondsSinceEpoch,
         }));
         await prefs.setString('weather_last_date', '${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}');
-        log.log('WEATHER', '天气数据已缓存');
       } finally {
         client.close();
       }
 
-      log.log('WEATHER', '=== 天气加载完成 ===');
     } catch (e, stackTrace) {
-      log.log('WEATHER', '异常: $e');
-      log.log('WEATHER', '堆栈: $stackTrace');
       // Try loading from cache
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -505,13 +506,11 @@ class _HomeScreenState extends State<HomeScreen> {
               _weatherWindSpeed = data['windSpeed'] ?? '';
               _weatherLoading = false;
             });
-            log.log('WEATHER', '从缓存加载天气成功');
             return;
           }
         }
       } catch (_) {}
       setState(() => _weatherLoading = false);
-      log.log('WEATHER', '天气加载失败');
     }
   }
 
@@ -568,53 +567,61 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
-    return Card(
-      margin: const EdgeInsets.all(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Text(_weatherIcon, style: const TextStyle(fontSize: 32)),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('$_weatherDesc  $_weatherTemp°C',
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                      const SizedBox(height: 2),
-                      Text('$_weatherCity  体感${_weatherFeelsLike}°C',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                    ],
-                  ),
+    return GestureDetector(
+      onTap: () => _loadWeather(forceRefresh: true),
+      child: Card(
+        margin: const EdgeInsets.all(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(_weatherIcon, style: const TextStyle(fontSize: 32)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Row 1: desc + temp | tip
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('$_weatherDesc  $_weatherTemp°C',
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                        ),
+                        if (_weatherTip.isNotEmpty)
+                          Text(
+                            _weatherTip,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    // Row 2: city + feelsLike | humidity + wind
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text('$_weatherCity  体感${_weatherFeelsLike}°C',
+                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                        ),
+                        if (_weatherHumidity.isNotEmpty || _weatherWindSpeed.isNotEmpty)
+                          Text('湿度$_weatherHumidity%  风速$_weatherWindSpeed',
+                            style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      ],
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                _buildWeatherDetail(Icons.water_drop_outlined, '湿度 $_weatherHumidity%'),
-                const SizedBox(width: 16),
-                _buildWeatherDetail(Icons.air, '风速 ${_weatherWindSpeed}km/h'),
-
-              ],
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildWeatherDetail(IconData icon, String text) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: Colors.grey),
-        const SizedBox(width: 4),
-        Text(text, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-      ],
-    );
-  }
 }

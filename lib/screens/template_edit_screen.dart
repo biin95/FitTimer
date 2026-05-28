@@ -57,46 +57,22 @@ class _TemplateEditScreenState extends State<TemplateEditScreen> {
   }
 
   void _addExercise() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('选择训练类型'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.fitness_center, color: Colors.blue),
-              title: const Text('力量训练'),
-              subtitle: const Text('组数、次数、重量'),
-              onTap: () {
-                Navigator.pop(ctx);
-                setState(() {
-                  _exercises.add(_ExerciseItem(exerciseType: 'strength'));
-                });
-                _scrollToBottom();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.directions_run, color: Colors.orange),
-              title: const Text('有氧运动'),
-              subtitle: const Text('时间、距离、速度'),
-              onTap: () {
-                Navigator.pop(ctx);
-                setState(() {
-                  _exercises.add(_ExerciseItem(
-                    exerciseType: 'cardio',
-                    sets: 0,
-                    reps: 0,
-                    rest: 0,
-                  ));
-                });
-                _scrollToBottom();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+    setState(() {
+      _exercises.add(_ExerciseItem(exerciseType: 'strength'));
+    });
+    _scrollToBottom();
+  }
+
+  void _addCardioExercise() {
+    setState(() {
+      _exercises.add(_ExerciseItem(
+        exerciseType: 'cardio',
+        sets: 0,
+        reps: 0,
+        rest: 0,
+      ));
+    });
+    _scrollToBottom();
   }
 
   void _scrollToBottom() {
@@ -239,6 +215,14 @@ class _TemplateEditScreenState extends State<TemplateEditScreen> {
         title: Text(_isEditing ? '编辑模板' : '创建模板'),
         centerTitle: true,
         actions: [
+          PopupMenuButton<String>(
+            onSelected: (v) {
+              if (v == 'add_cardio') _addCardioExercise();
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: 'add_cardio', child: Text('添加有氧运动')),
+            ],
+          ),
           _isLoading
               ? const Padding(
                   padding: EdgeInsets.all(16),
@@ -307,25 +291,28 @@ class _TemplateEditScreenState extends State<TemplateEditScreen> {
                 // Exercise list
                 Expanded(
                   child: _exercises.isEmpty
-                      ? Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                Icons.add_circle_outline,
-                                size: 64,
-                                color: Theme.of(context).colorScheme.outline,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                '点击下方按钮添加训练动作',
-                                style: TextStyle(
-                                  color:
-                                      Theme.of(context).colorScheme.outline,
-                                  fontSize: 14,
+                      ? GestureDetector(
+                          onTap: _addExercise,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.add_circle_outline,
+                                  size: 64,
+                                  color: Theme.of(context).colorScheme.outline,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(height: 12),
+                                Text(
+                                  '点击添加训练动作',
+                                  style: TextStyle(
+                                    color:
+                                        Theme.of(context).colorScheme.outline,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         )
                       : CustomScrollView(

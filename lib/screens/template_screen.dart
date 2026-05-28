@@ -166,21 +166,23 @@ class _TemplateCard extends StatefulWidget {
 
 class _TemplateCardState extends State<_TemplateCard> {
   int _exerciseCount = 0;
+  bool _hasCardio = false;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _loadExerciseCount();
+    _loadExerciseInfo();
   }
 
-  Future<void> _loadExerciseCount() async {
+  Future<void> _loadExerciseInfo() async {
     try {
       final exercises =
           await widget.db.getTemplateExercises(widget.template.id!);
       if (mounted) {
         setState(() {
           _exerciseCount = exercises.length;
+          _hasCardio = exercises.any((e) => e.exerciseType == 'cardio');
           _isLoading = false;
         });
       }
@@ -230,8 +232,8 @@ class _TemplateCardState extends State<_TemplateCard> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              Icons.fitness_center,
-              color: Theme.of(context).colorScheme.primary,
+              _hasCardio ? Icons.directions_run : Icons.fitness_center,
+              color: _hasCardio ? Colors.orange : Theme.of(context).colorScheme.primary,
             ),
           ),
           title: Text(

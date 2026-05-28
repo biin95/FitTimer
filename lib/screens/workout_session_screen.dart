@@ -7,6 +7,7 @@ import '../models/workout_template.dart';
 import '../models/template_exercise.dart';
 import '../services/database_service.dart';
 import '../services/log_service.dart';
+import '../services/notification_service.dart';
 
 class WorkoutSessionScreen extends StatefulWidget {
   final DateTime date;
@@ -37,10 +38,19 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   Timer? _reminderTimer;
   String _restExerciseName = '';
   int _reminderDuration = 3;
+  int _restDuration = 0; // total rest duration for notification
+
+  // Notification service
+  final NotificationService _notif = NotificationService();
+
+  // Highlight state
+  int? _highlightedExerciseIndex;
+  int? _highlightedSetIndex;
 
   @override
   void initState() {
     super.initState();
+    _notif.initialize();
     _loadOrCreateWorkout();
   }
 
@@ -48,6 +58,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   void dispose() {
     _restTimer?.cancel();
     _reminderTimer?.cancel();
+    _notif.cancelAll();
     _scrollController.dispose();
     super.dispose();
   }
@@ -110,6 +121,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     } catch (e) {
       debugPrint('Error loading workout: $e');
     }
+    _updateHighlight();
     setState(() => _isLoading = false);
   }
 
@@ -131,35 +143,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
 
   // --- Add exercise manually ---
   void _addExercise() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('选择训练类型'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.fitness_center, color: Colors.blue),
-              title: const Text('力量训练'),
-              subtitle: const Text('组数、次数、重量'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _addStrengthExercise();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.directions_run, color: Colors.orange),
-              title: const Text('有氧运动'),
-              subtitle: const Text('时间、距离、速度'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _addCardioExercise();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
+    _addStrengthExercise();
   }
 
   void _addStrengthExercise() {
@@ -286,6 +270,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         // Uncheck — keep actualReps/actualWeight so re-check preserves values
         s.isCompleted = false;
         _hasUnsavedChanges = true;
+        _updateHighlight();
       } else {
         // Complete
         s.isCompleted = true;
@@ -293,9 +278,28 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         s.actualWeight = s.actualWeight ?? s.targetWeight;
         _hasUnsavedChanges = true;
 
+
         // Start rest timer if not last set
         if (setIndex < exercise.sets.length - 1 && exercise.restDuration > 0) {
           _startRestTimer(exercise.restDuration, exercise.name);
+        } else {
+          // Last set or no rest → check if there's a next exercise
+          bool hasNextExercise = false;
+          for (int i = exerciseIndex + 1; i < _exercises.length; i++) {
+            if (_exercises[i].exerciseType == 'strength' && _exercises[i].sets.isNotEmpty) {
+              hasNextExercise = true;
+              break;
+            }
+          }
+
+
+          if (hasNextExercise && exercise.restDuration > 0) {
+            // 还有下一个动作 → 启动休息
+            _startRestTimer(exercise.restDuration, exercise.name);
+          } else {
+            // 全部完成或无休息 → 直接跳高亮
+            _updateHighlight();
+          }
         }
       }
     });
@@ -306,17 +310,14 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     _restTimer?.cancel();
     _reminderTimer?.cancel();
     _vibrateChannel.invokeMethod('cancel');
+    _notif.cancelAll();
     setState(() {
       _restRemaining = seconds;
       _restTotal = seconds;
+      _restDuration = seconds;
       _restExerciseName = exerciseName;
     });
-    // Start foreground service to keep timer alive when screen is off
-    log.log('VIBRATE', '前台服务 start: exercise=$exerciseName, seconds=$seconds');
-    _restServiceChannel.invokeMethod('start', {
-      'exerciseName': exerciseName,
-      'seconds': seconds,
-    });
+    // 前台服务已禁用，只保留倒计时通知
     _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_restRemaining <= 1) {
         log.log('VIBRATE', '休息倒计时结束, _restRemaining=$_restRemaining');
@@ -326,13 +327,23 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
         });
         _startReminder(exerciseName);
       } else {
-        setState(() => _restRemaining--);
+        setState(() {
+          _restRemaining--;
+          // 更新通知栏倒计时
+          _notif.showRestCountdown(
+            exerciseName: _restExerciseName,
+            totalSeconds: _restDuration,
+            remainingSeconds: _restRemaining,
+          );
+        });
       }
     });
   }
 
   Future<void> _startReminder(String exerciseName) async {
     log.log('VIBRATE', '_startReminder 被调用, _reminderDuration=$_reminderDuration');
+    _notif.cancelRestNotification();
+    _notif.showVibrationReminder(exerciseName);
     // Start continuous vibration for _reminderDuration seconds
     log.log('VIBRATE', '调用震动 MethodChannel: duration=${_reminderDuration * 1000}ms');
     try {
@@ -343,10 +354,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
     _reminderTimer = Timer(Duration(seconds: _reminderDuration), () {
       _reminderTimer = null;
-      _restServiceChannel.invokeMethod('stop');
+      _notif.cancelAll();
       setState(() {
         _restExerciseName = '';
       });
+      _updateHighlight();
     });
   }
 
@@ -354,6 +366,37 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     setState(() {
       _restRemaining = (_restRemaining + delta).clamp(0, 9999);
     });
+  }
+
+  // --- Highlight next set ---
+  void _updateHighlight() {
+    for (int i = 0; i < _exercises.length; i++) {
+      final ex = _exercises[i];
+      if (ex.exerciseType == 'cardio') continue;
+      for (int j = 0; j < ex.sets.length; j++) {
+        if (!ex.sets[j].isCompleted) {
+          _highlightedExerciseIndex = i;
+          _highlightedSetIndex = j;
+          return;
+        }
+      }
+    }
+    // All done
+    _highlightedExerciseIndex = null;
+    _highlightedSetIndex = null;
+  }
+
+  void _scrollToExercise(int index) {
+    if (!_scrollController.hasClients) return;
+    final offset = (index * 220.0).clamp(
+      0.0,
+      _scrollController.position.maxScrollExtent,
+    );
+    _scrollController.animateTo(
+      offset,
+      duration: const Duration(milliseconds: 300),
+      curve: Curves.easeOut,
+    );
   }
 
   // --- Save workout ---
@@ -603,10 +646,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               onSelected: (v) {
                 if (v == 'template') _applyTemplate();
                 if (v == 'add') _addExercise();
+                if (v == 'add_cardio') _addCardioExercise();
               },
               itemBuilder: (_) => [
                 const PopupMenuItem(value: 'template', child: Text('套用模板')),
-                const PopupMenuItem(value: 'add', child: Text('手动添加动作')),
+                const PopupMenuItem(value: 'add', child: Text('添加力量训练')),
+                const PopupMenuItem(value: 'add_cardio', child: Text('添加有氧运动')),
               ],
             ),
           ],
@@ -616,22 +661,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             : Column(
                 children: [
                   // Rest timer bar
-                  if (_restRemaining > 0) _buildRestTimerBar(),
+                  _buildRestTimerBar(),
 
                   // Exercise list
                   Expanded(
                     child: _exercises.isEmpty
-                        ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.add_circle_outline,
-                                    size: 64,
-                                    color:
-                                        Theme.of(context).colorScheme.outline),
-                                const SizedBox(height: 12),
-                                const Text('点击右上角添加训练动作或套用模板'),
-                              ],
+                        ? GestureDetector(
+                            onTap: _addExercise,
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.add_circle_outline,
+                                      size: 64,
+                                      color:
+                                          Theme.of(context).colorScheme.outline),
+                                  const SizedBox(height: 12),
+                                  const Text('点击添加训练动作或套用模板'),
+                                ],
+                              ),
                             ),
                           )
                         : ListView.builder(
@@ -666,71 +714,82 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   }
 
   Widget _buildRestTimerBar() {
+    final isCountingDown = _restRemaining > 0;
     final progress =
         _restTotal > 0 ? _restRemaining / _restTotal : 0.0;
     final minutes = _restRemaining ~/ 60;
     final seconds = _restRemaining % 60;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      color: Theme.of(context).colorScheme.primaryContainer,
-      child: Row(
-        children: [
-          const Icon(Icons.timer, size: 20),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
+      height: 60,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      color: isCountingDown
+          ? Theme.of(context).colorScheme.primaryContainer
+          : Theme.of(context).colorScheme.surface,
+      child: isCountingDown
+          ? Row(
               children: [
-                Text(
-                  '$_restExerciseName 组间休息',
-                  style: const TextStyle(
-                      fontSize: 12, fontWeight: FontWeight.w500),
+                const Icon(Icons.timer, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 6,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 4),
-                LinearProgressIndicator(
-                  value: progress,
-                  minHeight: 6,
-                  borderRadius: BorderRadius.circular(3),
+                const SizedBox(width: 12),
+                Text(
+                  '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
+                  style: const TextStyle(
+                      fontSize: 24, fontWeight: FontWeight.bold, fontFeatures: [
+                    FontFeature.tabularFigures(),
+                  ]),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.remove, size: 20),
+                  onPressed: () => _adjustRest(-10),
+                  tooltip: '-10秒',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.add, size: 20),
+                  onPressed: () => _adjustRest(10),
+                  tooltip: '+10秒',
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  onPressed: () {
+                    _restTimer?.cancel();
+                    _reminderTimer?.cancel();
+                    _notif.cancelAll();
+                    _vibrateChannel.invokeMethod('cancel');
+                    setState(() {
+                      _restRemaining = 0;
+                      _restExerciseName = '';
+                    });
+                  },
                 ),
               ],
+            )
+          : Center(
+              child: Text(
+                _restExerciseName.isEmpty
+                    ? '完成一组后开始休息'
+                    : '休息 ${_restExerciseName}',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
-            style: const TextStyle(
-                fontSize: 24, fontWeight: FontWeight.bold, fontFeatures: [
-              FontFeature.tabularFigures(),
-            ]),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.remove, size: 20),
-            onPressed: () => _adjustRest(-10),
-            tooltip: '-10秒',
-          ),
-          IconButton(
-            icon: const Icon(Icons.add, size: 20),
-            onPressed: () => _adjustRest(10),
-            tooltip: '+10秒',
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, size: 20),
-            onPressed: () {
-              _restTimer?.cancel();
-              _reminderTimer?.cancel();
-              _vibrateChannel.invokeMethod('cancel');
-              _restServiceChannel.invokeMethod('stop');
-              setState(() {
-                _restRemaining = 0;
-                _restExerciseName = '';
-              });
-            },
-          ),
-        ],
-      ),
     );
   }
 
@@ -1076,47 +1135,63 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     final displayReps = s.actualReps ?? s.targetReps;
     final displayWeight = s.actualWeight ?? s.targetWeight;
     final detail = '${displayReps}次 × ${displayWeight.toStringAsFixed(1)}kg';
+    final isHighlighted = exerciseIndex == _highlightedExerciseIndex && setIndex == _highlightedSetIndex;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Checkbox(
-            value: s.isCompleted,
-            onChanged: (_) => _toggleSet(exerciseIndex, setIndex),
-          ),
-          SizedBox(
-            width: 70,
-            child: Text(label, style: const TextStyle(fontSize: 13)),
-          ),
-          Expanded(
-            child: GestureDetector(
-              onTap: () => _editSet(exerciseIndex, setIndex),
-              child: Text(
-                detail,
-                style: TextStyle(
-                  fontSize: 13,
-                  color: s.isCompleted
-                      ? Theme.of(context).colorScheme.primary
-                      : null,
-                  decoration:
-                      s.isCompleted ? TextDecoration.lineThrough : null,
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: isHighlighted
+          ? BoxDecoration(
+              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border(
+                left: BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 3,
+                ),
+              ),
+            )
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+        child: Row(
+          children: [
+            Checkbox(
+              value: s.isCompleted,
+              onChanged: (_) => _toggleSet(exerciseIndex, setIndex),
+            ),
+            SizedBox(
+              width: 70,
+              child: Text(label, style: const TextStyle(fontSize: 13)),
+            ),
+            Expanded(
+              child: GestureDetector(
+                onTap: () => _editSet(exerciseIndex, setIndex),
+                child: Text(
+                  detail,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: s.isCompleted
+                        ? Theme.of(context).colorScheme.primary
+                        : null,
+                    decoration:
+                        s.isCompleted ? TextDecoration.lineThrough : null,
+                  ),
                 ),
               ),
             ),
-          ),
-          if (exercise.sets.length > 1)
-            IconButton(
-              icon: const Icon(Icons.close, size: 16, color: Colors.red),
-              onPressed: () => _removeSet(exerciseIndex, setIndex),
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            ),
-          if (s.isCompleted)
-            Icon(Icons.check_circle,
-                size: 16,
-                color: Theme.of(context).colorScheme.primary),
-        ],
+            if (exercise.sets.length > 1)
+              IconButton(
+                icon: const Icon(Icons.close, size: 16, color: Colors.red),
+                onPressed: () => _removeSet(exerciseIndex, setIndex),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            if (s.isCompleted)
+              Icon(Icons.check_circle,
+                  size: 16,
+                  color: Theme.of(context).colorScheme.primary),
+          ],
+        ),
       ),
     );
   }
