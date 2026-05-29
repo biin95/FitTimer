@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_screen.dart';
 import 'template_screen.dart';
+import 'exercise_catalog_screen.dart';
 import 'stats_screen.dart';
 import 'settings_screen.dart';
 
@@ -23,6 +24,7 @@ class _MainScaffoldState extends State<MainScaffold> {
     _screens = const [
       HomeScreen(),
       TemplateScreen(),
+      ExerciseCatalogScreen(),
       StatsScreen(),
       SettingsScreen(),
     ];
@@ -50,6 +52,10 @@ class _MainScaffoldState extends State<MainScaffold> {
           BottomNavigationBarItem(
             icon: Icon(Icons.fitness_center),
             label: '模板',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.sports_gymnastics),
+            label: '动作',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.bar_chart),

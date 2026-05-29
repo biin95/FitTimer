@@ -15,9 +15,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   bool _vibrationEnabled = true;
-  bool _soundEnabled = true;
   bool _notificationEnabled = true;
-  String? _customRingtonePath;
   bool _autoStartNextSet = true;
   int _reminderDuration = 3;
   String _exportPath = '';
@@ -30,17 +28,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _loadSettings() async {
     final db = DatabaseService();
     final vibration = await db.getSetting('vibration_enabled');
-    final sound = await db.getSetting('sound_enabled');
     final notification = await db.getSetting('notification_enabled');
-    final ringtone = await db.getSetting('custom_ringtone_path');
     final autoStart = await db.getSetting('auto_start_next_set');
     final reminder = await db.getSetting('rest_reminder_duration');
     final exportPath = await db.getSetting('export_path');
     setState(() {
       _vibrationEnabled = vibration != 'false';
-      _soundEnabled = sound != 'false';
       _notificationEnabled = notification != 'false';
-      _customRingtonePath = ringtone;
       _autoStartNextSet = autoStart != 'false';
       _reminderDuration = int.tryParse(reminder ?? '') ?? 3;
       _exportPath = exportPath ?? '';
@@ -57,31 +51,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _setSetting('vibration_enabled', value.toString());
   }
 
-  Future<void> _toggleSound(bool value) async {
-    setState(() => _soundEnabled = value);
-    await _setSetting('sound_enabled', value.toString());
-  }
-
   Future<void> _toggleNotification(bool value) async {
     setState(() => _notificationEnabled = value);
     await _setSetting('notification_enabled', value.toString());
-  }
-
-  Future<void> _pickCustomRingtone() async {
-    final result = await FilePicker.pickFiles(
-      type: FileType.audio,
-      allowMultiple: false,
-    );
-    if (result != null && result.files.single.path != null) {
-      final path = result.files.single.path!;
-      setState(() => _customRingtonePath = path);
-      await _setSetting('custom_ringtone_path', path);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('自定义铃声已设置')),
-        );
-      }
-    }
   }
 
   Future<void> _toggleAutoStart(bool value) async {
@@ -197,27 +169,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: _toggleVibration,
           ),
           SwitchListTile(
-            title: const Text('声音提醒'),
-            subtitle: const Text('休息结束时播放提示音'),
-            value: _soundEnabled,
-            onChanged: _toggleSound,
-          ),
-          SwitchListTile(
             title: const Text('通知栏提醒'),
             subtitle: const Text('在通知栏显示倒计时'),
             value: _notificationEnabled,
             onChanged: _toggleNotification,
-          ),
-          ListTile(
-            title: const Text('自定义铃声'),
-            subtitle: Text(
-              _customRingtonePath != null
-                  ? _customRingtonePath!.split(Platform.pathSeparator).last
-                  : '使用默认铃声',
-              style: theme.textTheme.bodySmall,
-            ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _pickCustomRingtone,
           ),
           const Divider(height: 32),
           Text('训练设置', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
@@ -230,7 +185,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           ListTile(
             title: const Text('提醒时长'),
- subtitle: Text('休息结束后震动/声音持续 $_reminderDuration 秒'),
+ subtitle: Text('休息结束后震动持续 $_reminderDuration 秒'),
             trailing: DropdownButton<int>(
               value: _reminderDuration,
               items: const [
