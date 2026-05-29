@@ -10,9 +10,21 @@ class TemplateScreen extends StatefulWidget {
   State<TemplateScreen> createState() => _TemplateScreenState();
 }
 
+/// 模板额外数据（练习数量、是否有有氧）
+class _TemplateExtraData {
+  final int exerciseCount;
+  final bool hasCardio;
+
+  const _TemplateExtraData({
+    required this.exerciseCount,
+    required this.hasCardio,
+  });
+}
+
 class _TemplateScreenState extends State<TemplateScreen> {
   final DatabaseService _db = DatabaseService();
   List<WorkoutTemplate> _templates = [];
+  Map<int, _TemplateExtraData> _templateData = {};
   bool _isLoading = true;
 
   @override
@@ -25,14 +37,22 @@ class _TemplateScreenState extends State<TemplateScreen> {
     setState(() => _isLoading = true);
     try {
       final templates = await _db.getTemplates();
-      // Load exercise count for each template
+      final templateData = <int, _TemplateExtraData>{};
+
+      // 一次性加载所有模板的练习信息
       for (final t in templates) {
         if (t.id != null) {
-          await _db.getTemplateExercises(t.id!);
+          final exercises = await _db.getTemplateExercises(t.id!);
+          templateData[t.id!] = _TemplateExtraData(
+            exerciseCount: exercises.length,
+            hasCardio: exercises.any((e) => e.exerciseType == 'cardio'),
+          );
         }
       }
+
       setState(() {
         _templates = templates;
+        _templateData = templateData;
         _isLoading = false;
       });
     } catch (e) {
@@ -136,9 +156,11 @@ class _TemplateScreenState extends State<TemplateScreen> {
       itemCount: _templates.length,
       itemBuilder: (context, index) {
         final template = _templates[index];
+        final extraData = template.id != null ? _templateData[template.id!] : null;
         return _TemplateCard(
           template: template,
-          db: _db,
+          exerciseCount: extraData?.exerciseCount ?? 0,
+          hasCardio: extraData?.hasCardio ?? false,
           onTap: () => _navigateToEdit(template),
           onDelete: () => _deleteTemplate(template),
         );
@@ -147,53 +169,20 @@ class _TemplateScreenState extends State<TemplateScreen> {
   }
 }
 
-class _TemplateCard extends StatefulWidget {
+class _TemplateCard extends StatelessWidget {
   final WorkoutTemplate template;
-  final DatabaseService db;
+  final int exerciseCount;
+  final bool hasCardio;
   final VoidCallback onTap;
   final VoidCallback onDelete;
 
   const _TemplateCard({
     required this.template,
-    required this.db,
+    required this.exerciseCount,
+    required this.hasCardio,
     required this.onTap,
     required this.onDelete,
   });
-
-  @override
-  State<_TemplateCard> createState() => _TemplateCardState();
-}
-
-class _TemplateCardState extends State<_TemplateCard> {
-  int _exerciseCount = 0;
-  bool _hasCardio = false;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadExerciseInfo();
-  }
-
-  Future<void> _loadExerciseInfo() async {
-    try {
-      final exercises =
-          await widget.db.getTemplateExercises(widget.template.id!);
-      if (mounted) {
-        setState(() {
-          _exerciseCount = exercises.length;
-          _hasCardio = exercises.any((e) => e.exerciseType == 'cardio');
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
 
   String _formatDate(int timestamp) {
     final date = DateTime.fromMillisecondsSinceEpoch(timestamp);
@@ -203,10 +192,10 @@ class _TemplateCardState extends State<_TemplateCard> {
   @override
   Widget build(BuildContext context) {
     return Dismissible(
-      key: ValueKey(widget.template.id),
+      key: ValueKey(template.id),
       direction: DismissDirection.endToStart,
       confirmDismiss: (_) async {
-        widget.onDelete();
+        onDelete();
         return false; // We handle the actual deletion in the callback
       },
       background: Container(
@@ -221,7 +210,7 @@ class _TemplateCardState extends State<_TemplateCard> {
       child: Card(
         margin: const EdgeInsets.symmetric(vertical: 6),
         child: ListTile(
-          onTap: widget.onTap,
+          onTap: onTap,
           contentPadding:
               const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
           leading: Container(
@@ -232,12 +221,12 @@ class _TemplateCardState extends State<_TemplateCard> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              _hasCardio ? Icons.directions_run : Icons.fitness_center,
-              color: _hasCardio ? Colors.orange : Theme.of(context).colorScheme.primary,
+              hasCardio ? Icons.directions_run : Icons.fitness_center,
+              color: hasCardio ? Colors.orange : Theme.of(context).colorScheme.primary,
             ),
           ),
           title: Text(
-            widget.template.name,
+            template.name,
             style: const TextStyle(
               fontWeight: FontWeight.w600,
               fontSize: 16,
@@ -246,9 +235,7 @@ class _TemplateCardState extends State<_TemplateCard> {
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text(
-              _isLoading
-                  ? '加载中...'
-                  : '$_exerciseCount 个动作 · 创建于 ${_formatDate(widget.template.createdAt)}',
+              '$exerciseCount 个动作 · 创建于 ${_formatDate(template.createdAt)}',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.outline,
                 fontSize: 13,

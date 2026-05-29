@@ -12,8 +12,9 @@ class StatsScreen extends StatefulWidget {
 
 enum _Period { week, month, custom }
 
-class _StatsScreenState extends State<StatsScreen> {
+class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStateMixin {
   final DatabaseService _db = DatabaseService();
+  late TabController _tabController;
 
   _Period _period = _Period.week;
   DateTime? _customStart;
@@ -41,7 +42,29 @@ class _StatsScreenState extends State<StatsScreen> {
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _loadStats();
+  }
+
+  @override
+  void dispose() {
+    _tabController.removeListener(_onTabChanged);
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (!_tabController.indexIsChanging) return;
+    final newPeriod = _Period.values[_tabController.index];
+    if (newPeriod != _period) {
+      setState(() => _period = newPeriod);
+      if (newPeriod != _Period.custom) {
+        _loadStats();
+      } else if (_customStart != null && _customEnd != null) {
+        _loadStats();
+      }
+    }
   }
 
   DateTimeRange get _currentRange {
@@ -236,6 +259,7 @@ class _StatsScreenState extends State<StatsScreen> {
   void _onPeriodChanged(_Period? p) {
     if (p == null) return;
     setState(() => _period = p);
+    _tabController.index = p.index;
     if (p != _Period.custom) {
       _loadStats();
     } else if (_customStart != null && _customEnd != null) {
@@ -246,93 +270,130 @@ class _StatsScreenState extends State<StatsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final dateFormat = DateFormat('yyyy/MM/dd');
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('训练统计'),
         centerTitle: true,
+        bottom: TabBar(
+          controller: _tabController,
+          onTap: (index) => _onPeriodChanged(_Period.values[index]),
+          tabs: const [
+            Tab(text: '本周'),
+            Tab(text: '本月'),
+            Tab(text: '自定义'),
+          ],
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _loadStats,
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  // ── Period selector ──
-                  _buildPeriodSelector(theme),
-                  if (_period == _Period.custom) ...[
-                    const SizedBox(height: 12),
-                    _buildCustomDatePickers(dateFormat, theme),
-                  ],
-                  const SizedBox(height: 20),
-
-                  // ── Summary card ──
-                  _buildSummaryCard(theme),
-                  const SizedBox(height: 20),
-
-                  // ── Monthly frequency chart (month only) ──
-                  if (_period == _Period.month) _buildMonthlyChart(theme),
-                  if (_period == _Period.month) const SizedBox(height: 20),
-
-                  // ── PR records ──
-                  _buildPRSection(theme),
-                ],
-              ),
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildWeekView(theme),
+                _buildMonthView(theme),
+                _buildCustomView(theme),
+              ],
             ),
     );
   }
 
-  // ──────────────────── Period Selector ────────────────────
+  // ──────────────────── Week View ────────────────────
 
-  Widget _buildPeriodSelector(ThemeData theme) {
-    return ToggleButtons(
-      isSelected: [
-        _period == _Period.week,
-        _period == _Period.month,
-        _period == _Period.custom,
-      ],
-      onPressed: (i) => _onPeriodChanged(_Period.values[i]),
-      borderRadius: BorderRadius.circular(12),
-      selectedColor: Colors.white,
-      fillColor: theme.colorScheme.primary,
-      color: theme.colorScheme.onSurface,
-      constraints: const BoxConstraints(minHeight: 40, minWidth: 80),
-      children: const [
-        Text('本周'),
-        Text('本月'),
-        Text('自定义'),
-      ],
+  Widget _buildWeekView(ThemeData theme) {
+    return RefreshIndicator(
+      onRefresh: _loadStats,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildSummaryCard(theme),
+          const SizedBox(height: 20),
+          _buildPRSection(theme),
+        ],
+      ),
+    );
+  }
+
+  // ──────────────────── Month View ────────────────────
+
+  Widget _buildMonthView(ThemeData theme) {
+    return RefreshIndicator(
+      onRefresh: _loadStats,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildSummaryCard(theme),
+          const SizedBox(height: 20),
+          _buildMonthlyChart(theme),
+          const SizedBox(height: 20),
+          _buildPRSection(theme),
+        ],
+      ),
+    );
+  }
+
+  // ──────────────────── Custom View ────────────────────
+
+  Widget _buildCustomView(ThemeData theme) {
+    final dateFormat = DateFormat('yyyy/MM/dd');
+
+    return RefreshIndicator(
+      onRefresh: _loadStats,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildCustomDatePickers(dateFormat, theme),
+          const SizedBox(height: 20),
+          _buildSummaryCard(theme),
+          const SizedBox(height: 20),
+          _buildPRSection(theme),
+        ],
+      ),
     );
   }
 
   Widget _buildCustomDatePickers(DateFormat fmt, ThemeData theme) {
-    return Row(
-      children: [
-        Expanded(
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.calendar_today, size: 16),
-            label: Text(
-              _customStart != null ? fmt.format(_customStart!) : '开始日期',
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('选择日期范围', style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+            )),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.calendar_today, size: 16),
+                    label: Text(
+                      _customStart != null ? fmt.format(_customStart!) : '开始日期',
+                    ),
+                    onPressed: () => _pickCustomDate(isStart: true),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: Text('—'),
+                ),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.calendar_today, size: 16),
+                    label: Text(
+                      _customEnd != null ? fmt.format(_customEnd!) : '结束日期',
+                    ),
+                    onPressed: () => _pickCustomDate(isStart: false),
+                  ),
+                ),
+              ],
             ),
-            onPressed: () => _pickCustomDate(isStart: true),
-          ),
+          ],
         ),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 8),
-          child: Text('—'),
-        ),
-        Expanded(
-          child: OutlinedButton.icon(
-            icon: const Icon(Icons.calendar_today, size: 16),
-            label: Text(
-              _customEnd != null ? fmt.format(_customEnd!) : '结束日期',
-            ),
-            onPressed: () => _pickCustomDate(isStart: false),
-          ),
-        ),
-      ],
+      ),
     );
   }
 
