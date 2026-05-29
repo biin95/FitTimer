@@ -1,14 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:intl/intl.dart';
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
-import 'package:geolocator/geolocator.dart';
-import 'package:geolocator_android/geolocator_android.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../main.dart' show currentQuote;
 import '../services/database_service.dart';
-import '../services/log_service.dart';
 import 'workout_session_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -355,7 +352,8 @@ class _HomeScreenState extends State<HomeScreen> {
           final cached = prefs.getString('weather_cache');
           if (cached != null) {
             final data = jsonDecode(cached);
-          setState(() {
+            if (!mounted) return;
+            setState(() {
             _weatherDesc = data['desc'] ?? '';
             _weatherTemp = data['temp'] ?? '';
             _weatherHumidity = data['humidity'] ?? '';
@@ -366,57 +364,75 @@ class _HomeScreenState extends State<HomeScreen> {
             _weatherLoading = false;
             _weatherTip = _getWeatherTip(data['temp'] ?? '', data['humidity'] ?? '', data['desc'] ?? '', data['feelsLike'] ?? '');
           });
-          log.log('WEATHER', '今天已加载过，从缓存读取');
           return;
           }
         }
       }
 
-      // Try to get location
-      double lat = 31.23;
-      double lon = 121.47;
+      // 定位：高德 REST IP 定位 → ipinfo.io 兜底
+      double? lat;
+      double? lon;
+      const host = 'j554e6799f.re.qweatherapi.com';
+      final client = http.Client();
 
+      // 1) 高德 REST IP 定位
       try {
-        bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-        if (serviceEnabled) {
-          LocationPermission permission = await Geolocator.checkPermission();
-          if (permission == LocationPermission.denied) {
-            permission = await Geolocator.requestPermission();
-          }
-          if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-            // Try getLastKnownPosition first (instant)
-            try {
-              final lastPos = await Geolocator.getLastKnownPosition();
-              if (lastPos != null) {
-                lat = lastPos.latitude;
-                lon = lastPos.longitude;
-                log.log('WEATHER', '用lastKnown位置: $lat, $lon');
-              } else {
-                Position position = await Geolocator.getCurrentPosition(
-                  locationSettings: AndroidSettings(
-                    accuracy: LocationAccuracy.low,
-                    timeLimit: const Duration(seconds: 15),
-                    forceLocationManager: true,
-                  ),
-                );
-                lat = position.latitude;
-                lon = position.longitude;
-                log.log('WEATHER', '获取到位置: $lat, $lon');
+        final amapResp = await http.get(
+          Uri.parse('https://restapi.amap.com/v3/ip?key=183980b98d04cf8e9acb5c6804ba315c&output=json'),
+        ).timeout(const Duration(seconds: 8));
+        if (amapResp.statusCode == 200) {
+          final amapData = jsonDecode(amapResp.body);
+          if (amapData['status'] == '1' && amapData['rectangle'] != null) {
+            final rect = amapData['rectangle'].toString();
+            // rectangle: "lng1,lat1;lng2,lat2" 取中心点
+            final corners = rect.split(';');
+            if (corners.length == 2) {
+              final p1 = corners[0].split(',');
+              final p2 = corners[1].split(',');
+              if (p1.length == 2 && p2.length == 2) {
+                final lng1 = double.tryParse(p1[0]);
+                final lat1 = double.tryParse(p1[1]);
+                final lng2 = double.tryParse(p2[0]);
+                final lat2 = double.tryParse(p2[1]);
+                if (lng1 != null && lat1 != null && lng2 != null && lat2 != null) {
+                  lon = (lng1 + lng2) / 2;
+                  lat = (lat1 + lat2) / 2;
+                }
               }
-            } catch (e) {
-              log.log('WEATHER', '定位失败, 用默认位置: $e');
             }
+          } else {
           }
+        } else {
         }
       } catch (e) {
-        // 定位失败，用默认坐标
       }
 
+      // 2) 兜底: ipinfo.io
+      if (lat == null) {
+        try {
+          final ipResponse = await http.get(
+            Uri.parse('https://ipinfo.io/json'),
+          ).timeout(const Duration(seconds: 5));
+          if (ipResponse.statusCode == 200) {
+            final ipData = jsonDecode(ipResponse.body);
+            final loc = ipData['loc'] ?? '';
+            final parts = loc.split(',');
+            if (parts.length == 2) {
+              lat = double.tryParse(parts[0]);
+              lon = double.tryParse(parts[1]);
+            }
+          }
+        } catch (e) {
+        }
+      }
+
+      // 3) 最终兜底: 默认坐标
+      lat ??= 31.23;
+      lon ??= 121.47;
+
       // Get location ID via GeoAPI
-      const host = 'j554e6799f.re.qweatherapi.com';
       final geoUrl = 'https://$host/geo/v2/city/lookup?location=$lon,$lat&number=1';
       
-      final client = http.Client();
       try {
         final geoResponse = await client.get(
           Uri.parse(geoUrl),
@@ -438,7 +454,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
 
         if (locationId.isEmpty) {
-          setState(() => _weatherLoading = false);
+          if (mounted) setState(() => _weatherLoading = false);
           return;
         }
 
@@ -457,7 +473,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final weatherData = jsonDecode(weatherResponse.body);
           if (weatherData['code'] == '200' && weatherData['now'] != null) {
             final now = weatherData['now'];
-            setState(() {
+            if (mounted) setState(() {
               _weatherDesc = (now['text'] ?? '').toString().trim();
               _weatherTemp = (now['temp'] ?? '').toString().trim();
               _weatherHumidity = (now['humidity'] ?? '').toString().trim();
@@ -496,7 +512,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final data = jsonDecode(cached);
           final cacheTime = data['timestamp'] as int? ?? 0;
           if (DateTime.now().millisecondsSinceEpoch - cacheTime < 6 * 3600 * 1000) {
-            setState(() {
+            if (mounted) setState(() {
               _weatherDesc = data['desc'] ?? '';
               _weatherTemp = data['temp'] ?? '';
               _weatherHumidity = data['humidity'] ?? '';
@@ -510,7 +526,7 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         }
       } catch (_) {}
-      setState(() => _weatherLoading = false);
+      if (mounted) setState(() => _weatherLoading = false);
     }
   }
 

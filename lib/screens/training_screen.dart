@@ -313,8 +313,9 @@ class _TrainingScreenState extends State<TrainingScreen> {
     // Alert: vibration + sound
     _triggerRestAlert();
 
-    // Notification stub
-    _notif.showRestTimerNotification(_restDurationForCurrentSet);
+    // Notification: rest complete reminder
+    final exName = _allDone ? '训练' : _exercises[_currentExerciseIndex].name;
+    _notif.showVibrationReminder(exName);
 
     // Auto-advance to next set if enabled
     if (_autoStartNextSet && !_allDone) {
