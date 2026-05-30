@@ -37,7 +37,7 @@ class ExerciseCatalog {
         '手腕保持中立，不要过度后翻',
       ],
       difficulty: 'intermediate',
-      imageAssetPath: 'assets/exercises/bench_press.png',
+      imageAssetPath: 'assets/exercises/bench_press.gif',
     ),
     const ExerciseInfo(
       id: 'incline_bench_press',
@@ -58,7 +58,7 @@ class ExerciseCatalog {
         '控制速度，不要借力弹胸',
       ],
       difficulty: 'intermediate',
-      imageAssetPath: 'assets/exercises/incline_bench_press.png',
+      imageAssetPath: 'assets/exercises/incline_bench_press.gif',
     ),
     const ExerciseInfo(
       id: 'dumbbell_fly',
@@ -78,7 +78,7 @@ class ExerciseCatalog {
         '想象"抱大树"的动作轨迹',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/dumbbell_fly.png',
+      imageAssetPath: 'assets/exercises/dumbbell_fly.gif',
     ),
     const ExerciseInfo(
       id: 'cable_crossover',
@@ -99,7 +99,7 @@ class ExerciseCatalog {
         '控制回放速度，不要让重量把你拉回去',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/cable_crossover.png',
+      imageAssetPath: 'assets/exercises/cable_crossover.gif',
     ),
     const ExerciseInfo(
       id: 'push_up',
@@ -119,7 +119,7 @@ class ExerciseCatalog {
         '如果标准俯卧撑困难，可以跪姿开始',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/push_up.png',
+      imageAssetPath: 'assets/exercises/push_up.gif',
     ),
 
     // ═══════════════════════════════════════════════════════════════════
@@ -143,7 +143,7 @@ class ExerciseCatalog {
         '拉不起来可以先用弹力带辅助',
       ],
       difficulty: 'advanced',
-      imageAssetPath: 'assets/exercises/pull_up.png',
+      imageAssetPath: 'assets/exercises/pull_up.gif',
     ),
     const ExerciseInfo(
       id: 'barbell_row',
@@ -164,7 +164,7 @@ class ExerciseCatalog {
         '不要用身体晃动来借力',
       ],
       difficulty: 'intermediate',
-      imageAssetPath: 'assets/exercises/barbell_row.png',
+      imageAssetPath: 'assets/exercises/barbell_row.gif',
     ),
     const ExerciseInfo(
       id: 'lat_pulldown',
@@ -184,7 +184,7 @@ class ExerciseCatalog {
         '回放时充分伸展背阔肌',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/lat_pulldown.png',
+      imageAssetPath: 'assets/exercises/lat_pulldown.gif',
     ),
     const ExerciseInfo(
       id: 'seated_row',
@@ -204,7 +204,7 @@ class ExerciseCatalog {
         '回放时不要完全放松，保持背部张力',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/seated_row.png',
+      imageAssetPath: 'assets/exercises/seated_row.gif',
     ),
     const ExerciseInfo(
       id: 'straight_arm_pulldown',
@@ -224,7 +224,7 @@ class ExerciseCatalog {
         '使用较轻的重量，感受肌肉发力',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/straight_arm_pulldown.png',
+      imageAssetPath: 'assets/exercises/straight_arm_pulldown.gif',
     ),
 
     // ═══════════════════════════════════════════════════════════════════
@@ -250,7 +250,7 @@ class ExerciseCatalog {
         '全程保持核心收紧',
       ],
       difficulty: 'intermediate',
-      imageAssetPath: 'assets/exercises/squat.png',
+      imageAssetPath: 'assets/exercises/squat.gif',
     ),
     const ExerciseInfo(
       id: 'deadlift',
@@ -272,7 +272,7 @@ class ExerciseCatalog {
         '下放时先屈髋再屈膝',
       ],
       difficulty: 'advanced',
-      imageAssetPath: 'assets/exercises/deadlift.png',
+      imageAssetPath: 'assets/exercises/deadlift.gif',
     ),
     const ExerciseInfo(
       id: 'leg_press',
@@ -293,7 +293,7 @@ class ExerciseCatalog {
         '不要完全锁死膝关节',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/leg_press.png',
+      imageAssetPath: 'assets/exercises/leg_press.gif',
     ),
     const ExerciseInfo(
       id: 'lunge',
@@ -313,7 +313,7 @@ class ExerciseCatalog {
         '步幅越大越练臀，步幅越小越练腿',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/lunge.png',
+      imageAssetPath: 'assets/exercises/lunge.gif',
     ),
     const ExerciseInfo(
       id: 'leg_curl',
@@ -333,7 +333,7 @@ class ExerciseCatalog {
         '控制速度，不要靠惯性甩',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/leg_curl.png',
+      imageAssetPath: 'assets/exercises/leg_curl.gif',
     ),
     const ExerciseInfo(
       id: 'leg_extension',
@@ -353,7 +353,7 @@ class ExerciseCatalog {
         '下放时不要完全放到底',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/leg_extension.png',
+      imageAssetPath: 'assets/exercises/leg_extension.gif',
     ),
     const ExerciseInfo(
       id: 'calf_raise',
@@ -373,7 +373,7 @@ class ExerciseCatalog {
         '可以调整脚尖方向内外侧重不同区域',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/calf_raise.png',
+      imageAssetPath: 'assets/exercises/calf_raise.gif',
     ),
 
     // ═══════════════════════════════════════════════════════════════════
@@ -398,7 +398,7 @@ class ExerciseCatalog {
         '杠铃轨迹应该是垂直向上',
       ],
       difficulty: 'intermediate',
-      imageAssetPath: 'assets/exercises/overhead_press.png',
+      imageAssetPath: 'assets/exercises/overhead_press.gif',
     ),
     const ExerciseInfo(
       id: 'lateral_raise',
@@ -418,7 +418,7 @@ class ExerciseCatalog {
         '使用较轻的重量，避免借力',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/lateral_raise.png',
+      imageAssetPath: 'assets/exercises/lateral_raise.gif',
     ),
     const ExerciseInfo(
       id: 'front_raise',
@@ -438,28 +438,29 @@ class ExerciseCatalog {
         '控制下放速度，感受持续张力',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/front_raise.png',
+      imageAssetPath: 'assets/exercises/front_raise.gif',
     ),
     const ExerciseInfo(
       id: 'face_pull',
-      name: '弹力带面拉',
+      name: '龙门架绳索面拉',
       category: '肩部',
       targetMuscles: ['三角肌后束', '菱形肌', '斜方肌中下部'],
-      description: '弹力带面拉是改善圆肩和强化肩后束的优秀动作，随时随地可以进行，也是肩部健康训练的必备动作。',
+      description: '龙门架绳索面拉是改善圆肩和强化肩后束的经典器械动作，通过绳索提供持续张力，是肩部健康训练的必备动作。',
       steps: [
-        '将弹力带固定在与面部同高的位置',
-        '双手握住弹力带两端，后退一步张紧',
-        '将弹力带拉向面部两侧',
+        '将龙门架滑轮调至与面部同高的位置',
+        '双手握住绳索两端，后退一步站立',
+        '大臂与地面平行，将绳索拉向面部两侧',
         '双手分开至耳朵两侧，肩胛骨后缩',
         '缓慢回放至起始位置',
       ],
       tips: [
-        '拉的时候大臂与地面平行',
-        '在末端充分外旋肩关节',
+        '拉的时候大臂保持与地面平行',
+        '在末端充分外旋肩关节，感受后束收缩',
         '保持挺胸，不要后仰借力',
+        '使用较轻的重量，专注于肌肉感受',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/face_pull.png',
+      imageAssetPath: 'assets/exercises/face_pull.gif',
     ),
     const ExerciseInfo(
       id: 'reverse_fly',
@@ -479,7 +480,7 @@ class ExerciseCatalog {
         '使用较轻的重量，专注于感受',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/reverse_fly.png',
+      imageAssetPath: 'assets/exercises/reverse_fly.gif',
     ),
     const ExerciseInfo(
       id: 'shrug',
@@ -499,7 +500,7 @@ class ExerciseCatalog {
         '可以使用助力带握住更重的重量',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/shrug.png',
+      imageAssetPath: 'assets/exercises/shrug.gif',
     ),
 
     // ═══════════════════════════════════════════════════════════════════
@@ -523,7 +524,7 @@ class ExerciseCatalog {
         '下放时控制速度，不要自由落体',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/barbell_curl.png',
+      imageAssetPath: 'assets/exercises/barbell_curl.gif',
     ),
     const ExerciseInfo(
       id: 'dumbbell_curl',
@@ -543,7 +544,7 @@ class ExerciseCatalog {
         '可以靠墙练习防止借力',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/dumbbell_curl.png',
+      imageAssetPath: 'assets/exercises/dumbbell_curl.gif',
     ),
     const ExerciseInfo(
       id: 'hammer_curl',
@@ -563,7 +564,7 @@ class ExerciseCatalog {
         '这个动作也对前臂有很好的训练效果',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/hammer_curl.png',
+      imageAssetPath: 'assets/exercises/hammer_curl.gif',
     ),
     const ExerciseInfo(
       id: 'tricep_pushdown',
@@ -583,7 +584,7 @@ class ExerciseCatalog {
         '不要让重量把你拉得身体前倾',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/tricep_pushdown.png',
+      imageAssetPath: 'assets/exercises/tricep_pushdown.gif',
     ),
     const ExerciseInfo(
       id: 'tricep_dip',
@@ -603,7 +604,7 @@ class ExerciseCatalog {
         '如果体重太大，可以用弹力带辅助',
       ],
       difficulty: 'intermediate',
-      imageAssetPath: 'assets/exercises/tricep_dip.png',
+      imageAssetPath: 'assets/exercises/tricep_dip.gif',
     ),
     const ExerciseInfo(
       id: 'concentration_curl',
@@ -623,7 +624,7 @@ class ExerciseCatalog {
         '下放时手臂完全伸直',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/concentration_curl.png',
+      imageAssetPath: 'assets/exercises/concentration_curl.gif',
     ),
 
     // ═══════════════════════════════════════════════════════════════════
@@ -647,7 +648,7 @@ class ExerciseCatalog {
         '如果腰部酸痛说明姿势不对',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/plank.png',
+      imageAssetPath: 'assets/exercises/plank.gif',
     ),
     const ExerciseInfo(
       id: 'crunch',
@@ -667,7 +668,7 @@ class ExerciseCatalog {
         '动作幅度不用太大，感受腹肌收缩即可',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/crunch.png',
+      imageAssetPath: 'assets/exercises/crunch.gif',
     ),
     const ExerciseInfo(
       id: 'russian_twist',
@@ -687,7 +688,7 @@ class ExerciseCatalog {
         '可以抬脚增加难度',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/russian_twist.png',
+      imageAssetPath: 'assets/exercises/russian_twist.gif',
     ),
     const ExerciseInfo(
       id: 'hanging_leg_raise',
@@ -707,7 +708,7 @@ class ExerciseCatalog {
         '如果举直腿困难，可以屈膝开始',
       ],
       difficulty: 'advanced',
-      imageAssetPath: 'assets/exercises/hanging_leg_raise.png',
+      imageAssetPath: 'assets/exercises/hanging_leg_raise.gif',
     ),
     const ExerciseInfo(
       id: 'dead_bug',
@@ -727,7 +728,7 @@ class ExerciseCatalog {
         '伸出时想象头顶和脚跟向两端拉长',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/dead_bug.png',
+      imageAssetPath: 'assets/exercises/dead_bug.gif',
     ),
 
     // ═══════════════════════════════════════════════════════════════════
@@ -752,7 +753,7 @@ class ExerciseCatalog {
         '跑步时脚掌着地方式要自然',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/treadmill.png',
+      imageAssetPath: 'assets/exercises/treadmill.gif',
     ),
     const ExerciseInfo(
       id: 'rowing_machine',
@@ -772,7 +773,7 @@ class ExerciseCatalog {
         '回放时不要完全放松，保持背部张力',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/rowing_machine.png',
+      imageAssetPath: 'assets/exercises/rowing_machine.gif',
     ),
     const ExerciseInfo(
       id: 'jump_rope',
@@ -790,9 +791,10 @@ class ExerciseCatalog {
         '前脚掌着地，膝盖微弯',
         '保持上身挺直，不要前倾',
         '可以加快速度提高心率',
+        '初学者可以扶墙保持平衡',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/jump_rope.png',
+      imageAssetPath: 'assets/exercises/jump_rope.gif',
     ),
     const ExerciseInfo(
       id: 'jumping_jack',
@@ -812,7 +814,7 @@ class ExerciseCatalog {
         '可以加快速度提高心率',
       ],
       difficulty: 'beginner',
-      imageAssetPath: 'assets/exercises/jumping_jack.png',
+      imageAssetPath: 'assets/exercises/jumping_jack.gif',
     ),
   ];
 
