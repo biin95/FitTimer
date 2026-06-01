@@ -86,7 +86,7 @@ class WeatherService {
   // 缓存相关
   static const _cacheKey = 'weather_cache';
   static const _cacheDateKey = 'weather_last_date';
-  static const _cacheDuration = Duration(hours: 6);
+  static const _cacheDuration = Duration(hours: 24);
 
   /// 获取天气数据
   /// [forceRefresh] 是否强制刷新（忽略缓存）
@@ -131,9 +131,7 @@ class WeatherService {
     } catch (e, stackTrace) {
       debugPrint('[Weather] 获取天气失败: $e');
       debugPrint('[Weather] $stackTrace');
-
-      // 尝试从缓存加载（即使过期）
-      return await _loadFromCache(ignoreExpiry: true);
+      return null;
     }
   }
 
@@ -158,151 +156,229 @@ class WeatherService {
     return const Location(lat: 31.23, lon: 121.47);
   }
 
-  /// 高德 IP 定位
+  /// 高德 IP 定位（带重试）
   Future<Location?> _getAmapLocation() async {
-    try {
-      final response = await http.get(
-        Uri.parse('https://restapi.amap.com/v3/ip?key=$_amapApiKey&output=json'),
-      ).timeout(_amapTimeout);
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final url = 'https://restapi.amap.com/v3/ip?key=$_amapApiKey&output=json';
+        debugPrint('[Weather] 高德定位请求(尝试${attempt + 1}): $url');
+        final response = await http.get(Uri.parse(url)).timeout(_amapTimeout);
 
-      if (response.statusCode != 200) return null;
+        debugPrint('[Weather] 高德定位HTTP状态: ${response.statusCode}');
+        if (response.statusCode != 200) {
+          debugPrint('[Weather] 高德定位HTTP错误: ${response.statusCode}');
+          continue;
+        }
 
-      final data = jsonDecode(response.body);
-      if (data['status'] != '1' || data['rectangle'] == null) return null;
+        final data = jsonDecode(response.body);
+        debugPrint('[Weather] 高德响应: status=${data['status']}, info=${data['info']}, infocode=${data['infocode']}');
 
-      final rect = data['rectangle'].toString();
-      final corners = rect.split(';');
-      if (corners.length != 2) return null;
+        if (data['status'] != '1') {
+          debugPrint('[Weather] 高德定位失败: ${data['info']} (infocode: ${data['infocode']})');
+          continue;
+        }
 
-      final p1 = corners[0].split(',');
-      final p2 = corners[1].split(',');
-      if (p1.length != 2 || p2.length != 2) return null;
+        // 检查 rectangle 字段是否存在且有效
+        final rect = data['rectangle']?.toString();
+        if (rect == null || rect.isEmpty) {
+          debugPrint('[Weather] 高德返回空rectangle，尝试用city字段');
+          // 尝试用 city 字段获取坐标（需要另一个API），这里直接返回null
+          continue;
+        }
 
-      final lng1 = double.tryParse(p1[0]);
-      final lat1 = double.tryParse(p1[1]);
-      final lng2 = double.tryParse(p2[0]);
-      final lat2 = double.tryParse(p2[1]);
+        final corners = rect.split(';');
+        if (corners.length != 2) {
+          debugPrint('[Weather] 高德rectangle格式异常: $rect');
+          continue;
+        }
 
-      if (lng1 == null || lat1 == null || lng2 == null || lat2 == null) return null;
+        final p1 = corners[0].split(',');
+        final p2 = corners[1].split(',');
+        if (p1.length != 2 || p2.length != 2) {
+          debugPrint('[Weather] 高德坐标点格式异常');
+          continue;
+        }
 
-      // 取中心点
-      return Location(
-        lat: (lat1 + lat2) / 2,
-        lon: (lng1 + lng2) / 2,
-      );
-    } catch (e) {
-      debugPrint('[Weather] 高德定位失败: $e');
-      return null;
+        final lng1 = double.tryParse(p1[0]);
+        final lat1 = double.tryParse(p1[1]);
+        final lng2 = double.tryParse(p2[0]);
+        final lat2 = double.tryParse(p2[1]);
+
+        if (lng1 == null || lat1 == null || lng2 == null || lat2 == null) {
+          debugPrint('[Weather] 高德坐标解析失败');
+          continue;
+        }
+
+        final lat = (lat1 + lat2) / 2;
+        final lon = (lng1 + lng2) / 2;
+        debugPrint('[Weather] 高德定位成功: lat=$lat, lon=$lon');
+        return Location(lat: lat, lon: lon);
+      } catch (e) {
+        debugPrint('[Weather] 高德定位异常(尝试${attempt + 1}): $e');
+        if (attempt == 0) {
+          await Future.delayed(const Duration(seconds: 1));
+        }
+      }
     }
+    debugPrint('[Weather] 高德定位全部失败');
+    return null;
   }
 
   /// ipinfo.io 定位
   Future<Location?> _getIpinfoLocation() async {
     try {
+      debugPrint('[Weather] ipinfo定位请求...');
       final response = await http.get(
         Uri.parse('https://ipinfo.io/json'),
       ).timeout(_ipinfoTimeout);
 
-      if (response.statusCode != 200) return null;
-
-      final data = jsonDecode(response.body);
-      final loc = data['loc'] ?? '';
-      final parts = loc.split(',');
-
-      if (parts.length != 2) return null;
-
-      final lat = double.tryParse(parts[0]);
-      final lon = double.tryParse(parts[1]);
-
-      if (lat == null || lon == null) return null;
-
-      return Location(lat: lat, lon: lon);
-    } catch (e) {
-      debugPrint('[Weather] ipinfo 定位失败: $e');
-      return null;
-    }
-  }
-
-  /// 获取城市信息（ID 和名称）
-  Future<LocationInfo?> _getLocationInfo(http.Client client, Location location) async {
-    try {
-      final url = 'https://$_weatherHost/geo/v2/city/lookup'
-          '?location=${location.lon},${location.lat}&number=1';
-
-      final response = await client.get(
-        Uri.parse(url),
-        headers: {
-          'X-QW-Api-Key': _weatherApiKey,
-          'Accept-Encoding': 'identity',
-        },
-      ).timeout(_weatherTimeout);
-
-      if (response.statusCode != 200) return null;
-
-      final data = jsonDecode(response.body);
-      if (data['code'] != '200' ||
-          data['location'] == null ||
-          (data['location'] as List).isEmpty) {
+      debugPrint('[Weather] ipinfo HTTP状态: ${response.statusCode}');
+      if (response.statusCode != 200) {
+        debugPrint('[Weather] ipinfo HTTP错误: ${response.statusCode}');
         return null;
       }
 
-      final locationData = data['location'][0];
-      final locationId = locationData['id'] as String;
-      // 优先显示区级名称，如果没有则显示城市名
-      final cityName = locationData['name'] ?? locationData['adm2'] ?? '';
+      final data = jsonDecode(response.body);
+      debugPrint('[Weather] ipinfo响应: city=${data['city']}, region=${data['region']}, loc=${data['loc']}');
+      final loc = data['loc']?.toString() ?? '';
+      final parts = loc.split(',');
 
-      debugPrint('[Weather] 城市信息: $cityName (ID: $locationId)');
-      return LocationInfo(locationId: locationId, cityName: cityName);
+      if (parts.length != 2) {
+        debugPrint('[Weather] ipinfo loc格式异常: $loc');
+        return null;
+      }
+
+      final lat = double.tryParse(parts[0].trim());
+      final lon = double.tryParse(parts[1].trim());
+
+      if (lat == null || lon == null) {
+        debugPrint('[Weather] ipinfo坐标解析失败');
+        return null;
+      }
+
+      debugPrint('[Weather] ipinfo定位成功: lat=$lat, lon=$lon');
+      return Location(lat: lat, lon: lon);
     } catch (e) {
-      debugPrint('[Weather] 获取城市信息失败: $e');
+      debugPrint('[Weather] ipinfo定位异常: $e');
       return null;
     }
   }
 
-  /// 获取天气数据
-  Future<WeatherData?> _fetchWeatherData(http.Client client, String locationId, String cityName) async {
-    try {
-      final url = 'https://$_weatherHost/v7/weather/now?location=$locationId';
+  /// 获取城市信息（ID 和名称，带重试）
+  Future<LocationInfo?> _getLocationInfo(http.Client client, Location location) async {
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final url = 'https://$_weatherHost/geo/v2/city/lookup'
+            '?location=${location.lon},${location.lat}&number=1';
 
-      final response = await client.get(
-        Uri.parse(url),
-        headers: {
-          'X-QW-Api-Key': _weatherApiKey,
-          'Accept-Encoding': 'identity',
-        },
-      ).timeout(_weatherTimeout);
+        debugPrint('[Weather] 城市查询(尝试${attempt + 1}): $url');
+        final response = await client.get(
+          Uri.parse(url),
+          headers: {
+            'X-QW-Api-Key': _weatherApiKey,
+            'Accept-Encoding': 'identity',
+          },
+        ).timeout(_weatherTimeout);
 
-      if (response.statusCode != 200) return null;
+        debugPrint('[Weather] 城市查询HTTP状态: ${response.statusCode}');
+        if (response.statusCode != 200) {
+          debugPrint('[Weather] 城市查询HTTP错误: ${response.statusCode}, body=${response.body}');
+          continue;
+        }
 
-      final data = jsonDecode(response.body);
-      if (data['code'] != '200' || data['now'] == null) return null;
+        final data = jsonDecode(response.body);
+        debugPrint('[Weather] 城市查询响应: code=${data['code']}');
 
-      final now = data['now'];
-      final temp = (now['temp'] ?? '').toString().trim();
-      final humidity = (now['humidity'] ?? '').toString().trim();
-      final desc = (now['text'] ?? '').toString().trim();
-      final feelsLike = (now['feelsLike'] ?? '').toString().trim();
-      final windSpeed = (now['windSpeed'] ?? '').toString().trim();
-      final iconCode = (now['icon'] ?? '100').toString();
+        if (data['code'] != '200') {
+          debugPrint('[Weather] 城市查询API错误: ${data['code']}, msg=${data['msg']}');
+          continue;
+        }
 
-      return WeatherData(
-        desc: desc,
-        temp: temp,
-        humidity: humidity,
-        city: cityName,
-        icon: _getWeatherIcon(iconCode),
-        feelsLike: feelsLike,
-        windSpeed: windSpeed,
-        tip: _getWeatherTip(temp, humidity, desc, feelsLike),
-      );
-    } catch (e) {
-      debugPrint('[Weather] 获取天气数据失败: $e');
-      return null;
+        if (data['location'] == null || (data['location'] as List).isEmpty) {
+          debugPrint('[Weather] 城市查询返回空location');
+          continue;
+        }
+
+        final locationData = data['location'][0];
+        final locationId = locationData['id'] as String;
+        final cityName = locationData['name'] ?? locationData['adm2'] ?? '';
+
+        debugPrint('[Weather] 城市信息: $cityName (ID: $locationId)');
+        return LocationInfo(locationId: locationId, cityName: cityName);
+      } catch (e) {
+        debugPrint('[Weather] 获取城市信息异常(尝试${attempt + 1}): $e');
+        if (attempt == 0) {
+          await Future.delayed(const Duration(seconds: 1));
+        }
+      }
     }
+    return null;
+  }
+
+  /// 获取天气数据（带重试）
+  Future<WeatherData?> _fetchWeatherData(http.Client client, String locationId, String cityName) async {
+    for (int attempt = 0; attempt < 2; attempt++) {
+      try {
+        final url = 'https://$_weatherHost/v7/weather/now?location=$locationId';
+
+        debugPrint('[Weather] 天气查询(尝试${attempt + 1}): $url');
+        final response = await client.get(
+          Uri.parse(url),
+          headers: {
+            'X-QW-Api-Key': _weatherApiKey,
+            'Accept-Encoding': 'identity',
+          },
+        ).timeout(_weatherTimeout);
+
+        debugPrint('[Weather] 天气查询HTTP状态: ${response.statusCode}');
+        if (response.statusCode != 200) {
+          debugPrint('[Weather] 天气查询HTTP错误: ${response.statusCode}, body=${response.body}');
+          continue;
+        }
+
+        final data = jsonDecode(response.body);
+        debugPrint('[Weather] 天气查询响应: code=${data['code']}');
+
+        if (data['code'] != '200') {
+          debugPrint('[Weather] 天气查询API错误: ${data['code']}, msg=${data['msg']}');
+          continue;
+        }
+
+        if (data['now'] == null) {
+          debugPrint('[Weather] 天气查询返回空now字段');
+          continue;
+        }
+
+        final now = data['now'];
+        final temp = (now['temp'] ?? '').toString().trim();
+        final humidity = (now['humidity'] ?? '').toString().trim();
+        final desc = (now['text'] ?? '').toString().trim();
+        final feelsLike = (now['feelsLike'] ?? '').toString().trim();
+        final windSpeed = (now['windSpeed'] ?? '').toString().trim();
+        final iconCode = (now['icon'] ?? '100').toString();
+
+        return WeatherData(
+          desc: desc,
+          temp: temp,
+          humidity: humidity,
+          city: cityName,
+          icon: _getWeatherIcon(iconCode),
+          feelsLike: feelsLike,
+          windSpeed: windSpeed,
+          tip: _getWeatherTip(temp, humidity, desc, feelsLike),
+        );
+      } catch (e) {
+        debugPrint('[Weather] 获取天气数据失败(尝试${attempt + 1}): $e');
+        if (attempt == 0) {
+          await Future.delayed(const Duration(seconds: 1));
+        }
+      }
+    }
+    return null;
   }
 
   /// 从缓存加载天气数据
-  Future<WeatherData?> _loadFromCache({bool ignoreExpiry = false}) async {
+  Future<WeatherData?> _loadFromCache() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final cached = prefs.getString(_cacheKey);
@@ -313,17 +389,8 @@ class WeatherService {
       final cacheTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
 
       // 检查缓存是否过期
-      if (!ignoreExpiry &&
-          DateTime.now().difference(cacheTime) > _cacheDuration) {
-        debugPrint('[Weather] 缓存已过期');
-        return null;
-      }
-
-      // 检查日期是否是今天（兼容旧逻辑）
-      final lastDate = prefs.getString(_cacheDateKey);
-      final today = _formatDate(DateTime.now());
-      if (!ignoreExpiry && lastDate != today) {
-        debugPrint('[Weather] 缓存日期不匹配');
+      if (DateTime.now().difference(cacheTime) > _cacheDuration) {
+        debugPrint('[Weather] 缓存已过期（${DateTime.now().difference(cacheTime).inHours}小时）');
         return null;
       }
 

@@ -18,7 +18,7 @@ class WorkoutSessionScreen extends StatefulWidget {
   State<WorkoutSessionScreen> createState() => _WorkoutSessionScreenState();
 }
 
-class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
+class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with WidgetsBindingObserver {
   static const _vibrateChannel = MethodChannel('com.fittimer/vibrate');
   static const _restServiceChannel = MethodChannel('com.fittimer/rest_service');
 
@@ -30,6 +30,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   bool _isLoading = true;
   bool _hasUnsavedChanges = false;
   bool _draftSaved = false;
+  bool _isSorting = false; // 排序模式
 
   // Rest timer
   int _restRemaining = 0;
@@ -39,6 +40,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   String _restExerciseName = '';
   int _reminderDuration = 3;
   int _restDuration = 0; // total rest duration for notification
+  DateTime? _restEndTime; // 绝对结束时间，用于息屏恢复
 
   // Notification service
   final NotificationService _notif = NotificationService();
@@ -50,17 +52,56 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _notif.initialize();
     _loadOrCreateWorkout();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _restTimer?.cancel();
     _reminderTimer?.cancel();
     _notif.cancelAll();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // App 从后台恢复，用绝对时间重新计算剩余时间
+      _syncRestTimerOnResume();
+    }
+  }
+
+  /// App 恢复时同步倒计时状态
+  void _syncRestTimerOnResume() {
+    if (_restEndTime == null || _restRemaining <= 0) return;
+
+    final now = DateTime.now();
+    final remaining = _restEndTime!.difference(now).inSeconds;
+
+    if (remaining <= 0) {
+      // 倒计时已结束
+      _restTimer?.cancel();
+      _restTimer = null;
+      setState(() {
+        _restRemaining = 0;
+      });
+      _startReminder(_restExerciseName);
+    } else {
+      // 更新剩余时间（不重启 Timer，只同步 UI）
+      setState(() {
+        _restRemaining = remaining;
+      });
+      // 更新通知
+      _notif.showRestCountdown(
+        exerciseName: _restExerciseName,
+        totalSeconds: _restDuration,
+        remainingSeconds: remaining,
+      );
+    }
   }
 
   // --- Date helpers ---
@@ -113,7 +154,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
               actualReps: er.actualReps,
               targetWeight: er.targetWeight,
               actualWeight: er.actualWeight,
-              isCompleted: er.actualReps != null,
+              isCompleted: er.isCompleted,
             )).toList(),
           );
         }).toList();
@@ -311,6 +352,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     _reminderTimer?.cancel();
     _vibrateChannel.invokeMethod('cancel');
     _notif.cancelAll();
+    _restEndTime = DateTime.now().add(Duration(seconds: seconds));
     setState(() {
       _restRemaining = seconds;
       _restTotal = seconds;
@@ -322,6 +364,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       if (_restRemaining <= 1) {
         log.log('VIBRATE', '休息倒计时结束, _restRemaining=$_restRemaining');
         timer.cancel();
+        _restTimer = null;
+        _restEndTime = null;
         setState(() {
           _restRemaining = 0;
         });
@@ -343,14 +387,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
   Future<void> _startReminder(String exerciseName) async {
     log.log('VIBRATE', '_startReminder 被调用, _reminderDuration=$_reminderDuration');
     _notif.cancelRestNotification();
+    // 通知自带震动，息屏时也能触发
     _notif.showVibrationReminder(exerciseName);
-    // Start continuous vibration for _reminderDuration seconds
+    // 前台时额外调用 MethodChannel 震动（后台无效，但不影响）
     log.log('VIBRATE', '调用震动 MethodChannel: duration=${_reminderDuration * 1000}ms');
     try {
       await _vibrateChannel.invokeMethod('vibrate', {'duration': _reminderDuration * 1000});
       log.log('VIBRATE', '震动 MethodChannel 调用成功');
     } catch (e) {
-      log.log('VIBRATE', '震动 MethodChannel 异常: $e');
+      log.log('VIBRATE', '震动 MethodChannel 异常(前台时可忽略): $e');
     }
     _reminderTimer = Timer(Duration(seconds: _reminderDuration), () {
       _reminderTimer = null;
@@ -454,11 +499,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
             exerciseName: ex.name.isEmpty ? '动作 ${i + 1}' : ex.name,
             setNumber: j + 1,
             targetReps: s.targetReps,
-            actualReps: s.isCompleted ? (s.actualReps ?? s.targetReps) : null,
+            actualReps: s.actualReps ?? s.targetReps,  // 始终保存实际值（含用户编辑）
             targetWeight: s.targetWeight,
-            actualWeight: s.isCompleted ? (s.actualWeight ?? s.targetWeight) : null,
+            actualWeight: s.actualWeight ?? s.targetWeight,  // 始终保存实际值（含用户编辑）
             restDuration: ex.restDuration,
             createdAt: DateTime.now().millisecondsSinceEpoch,
+            isCompleted: s.isCompleted,
           ));
         }
       }
@@ -623,6 +669,132 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     }
   }
 
+  // --- 排序功能 ---
+  void _moveExerciseUp(int index) {
+    if (index <= 0) return;
+    setState(() {
+      final item = _exercises.removeAt(index);
+      _exercises.insert(index - 1, item);
+      _hasUnsavedChanges = true;
+      _updateHighlight();
+    });
+  }
+
+  void _moveExerciseDown(int index) {
+    if (index >= _exercises.length - 1) return;
+    setState(() {
+      final item = _exercises.removeAt(index);
+      _exercises.insert(index + 1, item);
+      _hasUnsavedChanges = true;
+      _updateHighlight();
+    });
+  }
+
+  Widget _buildSortView() {
+    return Column(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+          child: Text(
+            '点击 ↑↓ 按钮调整动作顺序，完成后点击右上角"完成"',
+            style: TextStyle(
+              fontSize: 13,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+            itemCount: _exercises.length,
+            itemBuilder: (context, index) {
+              final ex = _exercises[index];
+              final isFirst = index == 0;
+              final isLast = index == _exercises.length - 1;
+              final isCardio = ex.exerciseType == 'cardio';
+              final completedSets = ex.sets.where((s) => s.isCompleted).length;
+
+              return Card(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Row(
+                    children: [
+                      // 序号
+                      Container(
+                        width: 28,
+                        height: 28,
+                        decoration: BoxDecoration(
+                          color: isCardio ? Colors.orange : Theme.of(context).colorScheme.primary,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Center(
+                          child: Text(
+                            '${index + 1}',
+                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // 动作名称和详情
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              ex.name.isEmpty ? '(未命名)' : ex.name,
+                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                            ),
+                            if (isCardio)
+                              Text('有氧运动', style: TextStyle(fontSize: 12, color: Colors.grey[600]))
+                            else if (ex.sets.isNotEmpty)
+                              Text(
+                                '$completedSets/${ex.sets.length} 组 · ${ex.sets.first.targetReps}次'
+                                '${ex.sets.first.targetWeight > 0 ? ' @ ${ex.sets.first.targetWeight}kg' : ''}',
+                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                              ),
+                          ],
+                        ),
+                      ),
+                      // ↑↓ 按钮
+                      Column(
+                        children: [
+                          SizedBox(
+                            width: 36,
+                            height: 36,
+                            child: IconButton(
+                              icon: Icon(Icons.arrow_upward, size: 20, color: isFirst ? Colors.grey[300] : null),
+                              onPressed: isFirst ? null : () => _moveExerciseUp(index),
+                              padding: EdgeInsets.zero,
+                              tooltip: '上移',
+                            ),
+                          ),
+                          SizedBox(
+                            width: 36,
+                            height: 36,
+                            child: IconButton(
+                              icon: Icon(Icons.arrow_downward, size: 20, color: isLast ? Colors.grey[300] : null),
+                              onPressed: isLast ? null : () => _moveExerciseDown(index),
+                              padding: EdgeInsets.zero,
+                              tooltip: '下移',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final dateStr =
@@ -639,26 +811,46 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text('$dateStr 训练'),
+          title: Text(_isSorting ? '调整顺序' : '$dateStr 训练'),
           centerTitle: true,
+          leading: _isSorting
+              ? IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => setState(() => _isSorting = false),
+                )
+              : null,
           actions: [
-            PopupMenuButton<String>(
-              onSelected: (v) {
-                if (v == 'template') _applyTemplate();
-                if (v == 'add') _addExercise();
-                if (v == 'add_cardio') _addCardioExercise();
-              },
-              itemBuilder: (_) => [
-                const PopupMenuItem(value: 'template', child: Text('套用模板')),
-                const PopupMenuItem(value: 'add', child: Text('添加力量训练')),
-                const PopupMenuItem(value: 'add_cardio', child: Text('添加有氧运动')),
-              ],
-            ),
+            if (_isSorting)
+              TextButton(
+                onPressed: () => setState(() => _isSorting = false),
+                child: const Text('完成', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              ),
+            if (!_isSorting && _exercises.length > 1)
+              IconButton(
+                icon: const Icon(Icons.sort),
+                onPressed: () => setState(() => _isSorting = true),
+                tooltip: '调整顺序',
+              ),
+            if (!_isSorting)
+              PopupMenuButton<String>(
+                onSelected: (v) {
+                  if (v == 'template') _applyTemplate();
+                  if (v == 'add') _addExercise();
+                  if (v == 'add_cardio') _addCardioExercise();
+                },
+                itemBuilder: (_) => [
+                  const PopupMenuItem(value: 'template', child: Text('套用模板')),
+                  const PopupMenuItem(value: 'add', child: Text('添加力量训练')),
+                  const PopupMenuItem(value: 'add_cardio', child: Text('添加有氧运动')),
+                ],
+              ),
           ],
         ),
         body: _isLoading
             ? const Center(child: CircularProgressIndicator())
-            : Column(
+            : _isSorting
+                ? _buildSortView()
+                : Column(
                 children: [
                   // Rest timer bar
                   _buildRestTimerBar(),
@@ -694,10 +886,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   ),
 
                   // Bottom buttons
-                  _buildBottomBar(),
+                  if (!_isSorting) _buildBottomBar(),
                 ],
               ),
-        floatingActionButton: (_exercises.isEmpty || _draftSaved)
+        floatingActionButton: (_exercises.isEmpty || _draftSaved || _isSorting)
             ? null
             : Container(
                 margin: const EdgeInsets.only(bottom: 80),
@@ -768,9 +960,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                   icon: const Icon(Icons.close, size: 20),
                   onPressed: () {
                     _restTimer?.cancel();
+                    _restTimer = null;
                     _reminderTimer?.cancel();
                     _notif.cancelAll();
                     _vibrateChannel.invokeMethod('cancel');
+                    _restEndTime = null;
                     setState(() {
                       _restRemaining = 0;
                       _restExerciseName = '';
@@ -841,10 +1035,46 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
                             _hasUnsavedChanges = true;
                           },
                         )
-                      : Text(
-                          exercise.name,
-                          style: const TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w600),
+                      : GestureDetector(
+                          onTap: () {
+                            // 点击编辑动作名称
+                            final nameCtrl = TextEditingController(text: exercise.name);
+                            showDialog(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('编辑动作名称'),
+                                content: TextField(
+                                  controller: nameCtrl,
+                                  autofocus: true,
+                                  decoration: const InputDecoration(
+                                    hintText: '动作名称',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx),
+                                    child: const Text('取消'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        exercise.name = nameCtrl.text;
+                                        _hasUnsavedChanges = true;
+                                      });
+                                      Navigator.pop(ctx);
+                                    },
+                                    child: const Text('确定'),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                          child: Text(
+                            exercise.name,
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600),
+                          ),
                         ),
                 ),
                 Text('$completedSets/${exercise.sets.length} 组',

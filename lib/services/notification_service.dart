@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
 
@@ -107,6 +108,8 @@ class NotificationService {
       priority: Priority.high,
       ongoing: true,
       icon: '@mipmap/ic_launcher',
+      enableVibration: true,
+      vibrationPattern: Int64List.fromList([0, 500, 200, 500, 200, 500]),
     );
     final details = NotificationDetails(android: androidDetails);
 

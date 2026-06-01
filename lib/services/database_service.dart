@@ -26,7 +26,7 @@ class DatabaseService {
     final path = join(directory.path, 'fittimer.db');
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -53,13 +53,19 @@ class DatabaseService {
       await db.execute('ALTER TABLE exercise_records ADD COLUMN distance_km REAL');
       await db.execute('ALTER TABLE exercise_records ADD COLUMN speed REAL');
       await db.execute('ALTER TABLE exercise_records ADD COLUMN incline REAL');
-      
+
       // Add cardio support to template_exercises too
       await db.execute("ALTER TABLE template_exercises ADD COLUMN exercise_type TEXT DEFAULT 'strength'");
       await db.execute('ALTER TABLE template_exercises ADD COLUMN duration_minutes INTEGER');
       await db.execute('ALTER TABLE template_exercises ADD COLUMN distance_km REAL');
       await db.execute('ALTER TABLE template_exercises ADD COLUMN speed REAL');
       await db.execute('ALTER TABLE template_exercises ADD COLUMN incline REAL');
+    }
+    if (oldVersion < 4) {
+      // Add is_completed column to track set completion separately from actual values
+      await db.execute("ALTER TABLE exercise_records ADD COLUMN is_completed INTEGER DEFAULT 0");
+      // Backfill: sets that had actual_reps filled were previously considered completed
+      await db.execute('UPDATE exercise_records SET is_completed = 1 WHERE actual_reps IS NOT NULL');
     }
   }
 
@@ -92,6 +98,7 @@ class DatabaseService {
         distance_km REAL,
         speed REAL,
         incline REAL,
+        is_completed INTEGER DEFAULT 0,
         FOREIGN KEY (workout_id) REFERENCES workout_records(id) ON DELETE CASCADE
       )
     ''');

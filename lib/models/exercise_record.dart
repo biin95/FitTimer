@@ -14,6 +14,7 @@ class ExerciseRecord {
   final double? distanceKm; // cardio only
   final double? speed; // cardio only (km/h)
   final double? incline; // cardio only (percentage)
+  final bool isCompleted; // 是否完成
 
   ExerciseRecord({
     this.id,
@@ -31,6 +32,7 @@ class ExerciseRecord {
     this.distanceKm,
     this.speed,
     this.incline,
+    this.isCompleted = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -50,6 +52,7 @@ class ExerciseRecord {
       'distance_km': distanceKm,
       'speed': speed,
       'incline': incline,
+      'is_completed': isCompleted ? 1 : 0,
     };
   }
 
@@ -78,6 +81,7 @@ class ExerciseRecord {
       incline: map['incline'] != null
           ? (map['incline'] as num).toDouble()
           : null,
+      isCompleted: (map['is_completed'] as int?) == 1,
     );
   }
 }

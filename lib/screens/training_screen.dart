@@ -112,7 +112,7 @@ class ManualExercise {
   });
 }
 
-class _TrainingScreenState extends State<TrainingScreen> {
+class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObserver {
   // ── Services ──
   final DatabaseService _db = DatabaseService();
   final TimerService _restTimer = TimerService();
@@ -139,9 +139,17 @@ class _TrainingScreenState extends State<TrainingScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _sportType = 'strength'; // default
     _restTimer.onComplete = _onRestComplete;
     _initSession();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _restTimer.syncOnResume();
+    }
   }
 
   Future<void> _initSession() async {
@@ -204,6 +212,7 @@ class _TrainingScreenState extends State<TrainingScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _restTimer.dispose();
     _scrollController.dispose();
     for (final row in _weightCtrls) {
@@ -267,6 +276,7 @@ class _TrainingScreenState extends State<TrainingScreen> {
       actualWeight: actualWeight,
       restDuration: ex.restDuration,
       createdAt: DateTime.now().millisecondsSinceEpoch,
+      isCompleted: true,
     );
     await _db.insertExerciseRecord(record);
 

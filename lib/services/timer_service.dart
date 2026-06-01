@@ -17,6 +17,7 @@ class TimerService extends ChangeNotifier {
   Timer? _timer;
   int _remaining = 0; // seconds
   bool _isRunning = false;
+  DateTime? _endTime; // 绝对结束时间，用于息屏恢复
 
   /// Callback fired when countdown reaches 0.
   VoidCallback? onComplete;
@@ -40,6 +41,7 @@ class TimerService extends ChangeNotifier {
     cancel();
     _remaining = durationSeconds;
     _isRunning = true;
+    _endTime = DateTime.now().add(Duration(seconds: durationSeconds));
     notifyListeners();
 
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -50,6 +52,7 @@ class TimerService extends ChangeNotifier {
         _timer?.cancel();
         _timer = null;
         _isRunning = false;
+        _endTime = null;
         _remaining = 0;
         notifyListeners();
         onComplete?.call();
@@ -57,11 +60,32 @@ class TimerService extends ChangeNotifier {
     });
   }
 
+  /// 同步剩余时间（用于 app 从后台恢复时调用）
+  void syncOnResume() {
+    if (_endTime == null || !_isRunning) return;
+    final now = DateTime.now();
+    final remaining = _endTime!.difference(now).inSeconds;
+    if (remaining <= 0) {
+      // 倒计时已结束
+      _timer?.cancel();
+      _timer = null;
+      _isRunning = false;
+      _endTime = null;
+      _remaining = 0;
+      notifyListeners();
+      onComplete?.call();
+    } else {
+      _remaining = remaining;
+      notifyListeners();
+    }
+  }
+
   /// Adjust remaining time by [seconds] (positive to add, negative to subtract).
   /// Multiple calls accumulate. Does not restart the timer.
   void adjustTime(int seconds) {
     if (!_isRunning) return;
     _remaining = (_remaining + seconds).clamp(0, 9999);
+    _endTime = DateTime.now().add(Duration(seconds: _remaining));
     notifyListeners();
 
     // If adjustment brought it to 0, fire complete immediately
@@ -69,6 +93,7 @@ class TimerService extends ChangeNotifier {
       _timer?.cancel();
       _timer = null;
       _isRunning = false;
+      _endTime = null;
       notifyListeners();
       onComplete?.call();
     }
@@ -79,6 +104,7 @@ class TimerService extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     _isRunning = false;
+    _endTime = null;
     _remaining = 0;
     notifyListeners();
   }
