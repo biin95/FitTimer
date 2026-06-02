@@ -55,6 +55,34 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     WidgetsBinding.instance.addObserver(this);
     _notif.initialize();
     _loadOrCreateWorkout();
+    _checkExactAlarmPermission();
+  }
+
+  /// 检查精确闹钟权限，如果没有则提示用户开启
+  Future<void> _checkExactAlarmPermission() async {
+    final canSchedule = await _notif.canScheduleExactAlarms();
+    if (!canSchedule && mounted) {
+      final shouldOpen = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('需要精确闹钟权限'),
+          content: const Text('为了在息屏时准确提醒休息结束，请开启"精确闹钟"权限。\n\n点击"去开启"会跳转到设置页面。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('稍后'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('去开启'),
+            ),
+          ],
+        ),
+      );
+      if (shouldOpen == true) {
+        await _notif.openExactAlarmSettings();
+      }
+    }
   }
 
   @override
@@ -86,10 +114,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
       // 倒计时已结束
       _restTimer?.cancel();
       _restTimer = null;
+      _restEndTime = null;
       setState(() {
         _restRemaining = 0;
       });
-      _startReminder(_restExerciseName);
+      // 不调用 _startReminder！
+      // AlarmManager 闹钟会自动触发 RestAlarmReceiver 处理震动和通知
+      // 如果闹钟已触发，RestAlarmReceiver 已经处理过了
+      // 如果闹钟还没触发，它会在稍后触发
+      log.log('VIBRATE', 'App恢复，倒计时已结束，等待 RestAlarmReceiver 处理');
     } else {
       // 更新剩余时间（不重启 Timer，只同步 UI）
       setState(() {
@@ -346,13 +379,24 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     });
   }
 
-  void _startRestTimer(int seconds, String exerciseName) {
+  void _startRestTimer(int seconds, String exerciseName) async {
     log.log('VIBRATE', '开始休息计时: $exerciseName, 休息${seconds}秒');
     _restTimer?.cancel();
     _reminderTimer?.cancel();
     _vibrateChannel.invokeMethod('cancel');
     _notif.cancelAll();
     _restEndTime = DateTime.now().add(Duration(seconds: seconds));
+    // 检查精确闹钟权限
+    final canSchedule = await _notif.canScheduleExactAlarms();
+    if (canSchedule) {
+      // 有权限，预定原生闹钟，息屏时由 AlarmManager 触发震动
+      _notif.scheduleVibrationReminder(exerciseName, _restEndTime!).catchError((e) {
+        log.log('VIBRATE', 'scheduleVibrationReminder 失败: $e');
+      });
+      log.log('VIBRATE', '已调用 scheduleVibrationReminder, endTime=$_restEndTime');
+    } else {
+      log.log('VIBRATE', '无精确闹钟权限，跳过 scheduleVibrationReminder');
+    }
     setState(() {
       _restRemaining = seconds;
       _restTotal = seconds;
@@ -365,11 +409,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
         log.log('VIBRATE', '休息倒计时结束, _restRemaining=$_restRemaining');
         timer.cancel();
         _restTimer = null;
-        _restEndTime = null;
+        // 注意：不清理 _restEndTime！让 _syncRestTimerOnResume 知道 alarm 已设置
         setState(() {
           _restRemaining = 0;
         });
-        _startReminder(exerciseName);
+        // 不调用 _startReminder！
+        // AlarmManager 闹钟会自动触发 RestAlarmReceiver 处理震动和通知
+        log.log('VIBRATE', '前台倒计时结束，等待 RestAlarmReceiver 处理');
       } else {
         setState(() {
           _restRemaining--;
@@ -387,15 +433,26 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
   Future<void> _startReminder(String exerciseName) async {
     log.log('VIBRATE', '_startReminder 被调用, _reminderDuration=$_reminderDuration');
     _notif.cancelRestNotification();
-    // 通知自带震动，息屏时也能触发
-    _notif.showVibrationReminder(exerciseName);
-    // 前台时额外调用 MethodChannel 震动（后台无效，但不影响）
-    log.log('VIBRATE', '调用震动 MethodChannel: duration=${_reminderDuration * 1000}ms');
-    try {
-      await _vibrateChannel.invokeMethod('vibrate', {'duration': _reminderDuration * 1000});
-      log.log('VIBRATE', '震动 MethodChannel 调用成功');
-    } catch (e) {
-      log.log('VIBRATE', '震动 MethodChannel 异常(前台时可忽略): $e');
+    // 注意：不要在这里取消 alarm！
+    // 如果 App 从后台恢复，alarm 可能还没触发，取消它会导致息屏震动失效
+    // 如果 alarm 已经触发了，cancelAlarm 是无害的
+    // 让 alarm 自然触发或过期
+
+    // 检查是否有精确闹钟权限，有则说明 alarm 可能已触发或即将触发
+    final canSchedule = await _notif.canScheduleExactAlarms();
+    if (canSchedule) {
+      // 有权限时，alarm 已设置，不显示重复的 Dart 震动和通知
+      // 等 RestAlarmReceiver 自己处理
+      log.log('VIBRATE', '有精确闹钟权限，等待 RestAlarmReceiver 处理');
+    } else {
+      // 无权限时，用 Dart 方案作为 fallback
+      log.log('VIBRATE', '无精确闹钟权限，使用 Dart 震动 fallback');
+      _notif.showVibrationReminder(exerciseName);
+      try {
+        await _vibrateChannel.invokeMethod('vibrate', {'duration': _reminderDuration * 1000});
+      } catch (e) {
+        log.log('VIBRATE', '震动 MethodChannel 异常: $e');
+      }
     }
     _reminderTimer = Timer(Duration(seconds: _reminderDuration), () {
       _reminderTimer = null;
