@@ -20,6 +20,7 @@ class RestAlarmReceiver : BroadcastReceiver() {
         const val CHANNEL_ID = "fittimer_reminder_v2"
         const val CHANNEL_NAME = "训练提醒"
         const val NOTIFICATION_ID = 2001
+        const val REST_NOTIFICATION_ID = 1001  // 倒计时通知 ID
     }
 
     override fun onReceive(context: Context, intent: Intent?) {
@@ -33,6 +34,11 @@ class RestAlarmReceiver : BroadcastReceiver() {
             "fittimer:rest_alarm_vibrate"
         )
         wakeLock.acquire(10_000L) // 最多持有 10 秒
+
+        // 先清除倒计时通知
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.cancel(REST_NOTIFICATION_ID)
+        android.util.Log.d("VIBRATE", "RestAlarmReceiver 已清除倒计时通知")
 
         try {
             // 震动

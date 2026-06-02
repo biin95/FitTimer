@@ -118,6 +118,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
       setState(() {
         _restRemaining = 0;
       });
+      // 清除所有通知（倒计时 + 提醒）
+      _notif.cancelRestNotification();
+      _notif.cancelReminderNotification();
       // 不调用 _startReminder！
       // AlarmManager 闹钟会自动触发 RestAlarmReceiver 处理震动和通知
       // 如果闹钟已触发，RestAlarmReceiver 已经处理过了
@@ -413,6 +416,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
         setState(() {
           _restRemaining = 0;
         });
+        // 清除倒计时通知（RestAlarmReceiver 也会清除，这里双保险）
+        _notif.cancelRestNotification();
         // 不调用 _startReminder！
         // AlarmManager 闹钟会自动触发 RestAlarmReceiver 处理震动和通知
         log.log('VIBRATE', '前台倒计时结束，等待 RestAlarmReceiver 处理');
