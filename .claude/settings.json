@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter analyze:*)",
+      "Bash(dart format:*)",
+      "Bash(flutter build apk:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh release create:*)",
+      "Bash(gh release view:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "command": "flutter analyze --no-fatal-infos --no-fatal-warnings",
+        "description": "编辑 .dart 文件后自动运行静态分析"
+      },
+      {
+        "matcher": "Write|Edit",
+        "command": "dart format",
+        "description": "编辑 .dart 文件后自动格式化"
+      }
+    ]
+  }
+}
