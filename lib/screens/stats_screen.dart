@@ -91,6 +91,20 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
   }
 
   Future<void> _loadStats() async {
+    // 自定义模式下未选择日期范围时不加载数据
+    if (_period == _Period.custom && (_customStart == null || _customEnd == null)) {
+      setState(() {
+        _loading = false;
+        _trainingCount = 0;
+        _totalExercises = 0;
+        _totalSets = 0;
+        _totalVolume = 0;
+        _prRecords = {};
+        _customDayCounts = [];
+      });
+      return;
+    }
+
     setState(() => _loading = true);
 
     final range = _currentRange;
@@ -403,6 +417,7 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
 
   Widget _buildCustomView(ThemeData theme) {
     final dateFormat = DateFormat('yyyy/MM/dd');
+    final hasRange = _customStart != null && _customEnd != null;
 
     return RefreshIndicator(
       onRefresh: _loadStats,
@@ -411,15 +426,25 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
         children: [
           _buildCustomDatePickers(dateFormat, theme),
           const SizedBox(height: 20),
-          _buildSummaryCard(theme),
-          const SizedBox(height: 20),
-          if (_customStart != null && _customEnd != null) ...[
-            _buildCustomDayChart(theme),
+          if (!hasRange) ...[
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+                child: Center(
+                  child: Text(
+                    '请选择日期范围',
+                    style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey[500]),
+                  ),
+                ),
+              ),
+            ),
+          ] else ...[
+            _buildSummaryCard(theme),
             const SizedBox(height: 20),
+            _buildPRSection(theme),
           ],
-          _buildMonthlyChart(theme),
-          const SizedBox(height: 20),
-          _buildPRSection(theme),
         ],
       ),
     );
