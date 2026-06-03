@@ -107,8 +107,6 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
       return;
     }
 
-    setState(() => _loading = true);
-
     try {
     final range = _currentRange;
     final startMs = range.start.millisecondsSinceEpoch;
