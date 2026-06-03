@@ -107,6 +107,7 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
 
     setState(() => _loading = true);
 
+    try {
     final range = _currentRange;
     final startMs = range.start.millisecondsSinceEpoch;
     // Include full end day
@@ -195,6 +196,7 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
       }
     }
 
+    if (!mounted) return;
     setState(() {
       _trainingCount = workouts.length;
       _totalExercises = exerciseNames.length;
@@ -208,6 +210,11 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
       _monthCompletedCount = monthCompleted;
       _loading = false;
     });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      debugPrint('加载统计数据失败: $e');
+    }
   }
 
   List<_WeekCount> _computeWeeklyCounts(
@@ -337,17 +344,6 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
     }
   }
 
-  void _onPeriodChanged(_Period? p) {
-    if (p == null) return;
-    setState(() => _period = p);
-    _tabController.index = p.index;
-    if (p != _Period.custom) {
-      _loadStats();
-    } else if (_customStart != null && _customEnd != null) {
-      _loadStats();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -358,7 +354,6 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
         centerTitle: true,
         bottom: TabBar(
           controller: _tabController,
-          onTap: (index) => _onPeriodChanged(_Period.values[index]),
           tabs: const [
             Tab(text: '本周'),
             Tab(text: '本月'),

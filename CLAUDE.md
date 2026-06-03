@@ -72,6 +72,16 @@ lib/
 
 使用 `/release` 技能自动完成：版本检查 → 多架构编译 → 重命名 APK → 生成 changelog → 创建 GitHub Release（含优化/修复描述）。
 
+### 编译要求
+
+**完成修复或功能开发后，必须自动编译 APK，不需要询问用户。**
+
+```bash
+flutter build apk --release --target-platform android-arm64
+```
+
+编译产物路径：`build/app/outputs/flutter-apk/app-release.apk`
+
 ## 已知问题
 
 - 自定义统计数据异常（待用户反馈具体哪个数据不对）
