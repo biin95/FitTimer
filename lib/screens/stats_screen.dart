@@ -12,6 +12,25 @@ class StatsScreen extends StatefulWidget {
 
 enum _Period { week, month, custom }
 
+class _StatsData {
+  final int trainingCount;
+  final int totalExercises;
+  final int totalSets;
+  final Map<String, _PRRecord> prRecords;
+  final List<_DayCount> dayCounts;
+  const _StatsData({
+    required this.trainingCount,
+    required this.totalExercises,
+    required this.totalSets,
+    required this.prRecords,
+    required this.dayCounts,
+  });
+  static const empty = _StatsData(
+    trainingCount: 0, totalExercises: 0, totalSets: 0,
+    prRecords: {}, dayCounts: [],
+  );
+}
+
 class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStateMixin {
   final DatabaseService _db = DatabaseService();
   late TabController _tabController;
@@ -22,32 +41,32 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
 
   bool _loading = true;
 
-  // Computed stats
-  int _trainingCount = 0;
-  int _totalExercises = 0;
-  int _totalSets = 0;
-  double _totalVolume = 0; // kg·次
+  // Per-tab cached data — switching tabs is instant
+  _StatsData _weekData = _StatsData.empty;
+  _StatsData _monthData = _StatsData.empty;
+  _StatsData _customData = _StatsData.empty;
+
+  // Always up-to-date completion counts
   int _weekCompletedCount = 0;
   int _monthCompletedCount = 0;
 
-  // PR records: exerciseName → { bestWeight, bestVolume }
-  Map<String, _PRRecord> _prRecords = {};
-
-  // Weekly frequency: list of (weekLabel, count)
-  List<_WeekCount> _weeklyCounts = [];
-
-  // Monthly frequency: list of (monthLabel, count)
+  // Monthly chart data (last 6 months, independent of tab)
   List<_MonthCount> _monthlyCounts = [];
 
-  // Custom range frequency: list of (dateLabel, count)
-  List<_DayCount> _customDayCounts = [];
+  _StatsData get _displayData {
+    switch (_period) {
+      case _Period.week: return _weekData;
+      case _Period.month: return _monthData;
+      case _Period.custom: return _customData;
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _tabController.animation!.addListener(_onTabAnimationChanged);
-    _loadStats();
+    _loadInitialStats();
   }
 
   @override
@@ -58,135 +77,145 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
   }
 
   void _onTabAnimationChanged() {
-    // 只在动画停稳（值为整数）时触发
     final value = _tabController.animation!.value;
     if (value != value.roundToDouble()) return;
     final index = value.round();
     final newPeriod = _Period.values[index];
     if (newPeriod == _period) return;
     setState(() => _period = newPeriod);
-    if (newPeriod != _Period.custom) {
-      _loadStats();
-    } else if (_customStart != null && _customEnd != null) {
-      _loadStats();
-    }
   }
 
-  DateTimeRange get _currentRange {
-    final now = DateTime.now();
-    switch (_period) {
-      case _Period.week:
-        // Monday of this week
-        final weekday = now.weekday; // 1=Mon, 7=Sun
-        final start = DateTime(now.year, now.month, now.day)
-            .subtract(Duration(days: weekday - 1));
-        return DateTimeRange(start: start, end: now);
-      case _Period.month:
-        final start = DateTime(now.year, now.month, 1);
-        return DateTimeRange(start: start, end: now);
-      case _Period.custom:
-        return DateTimeRange(
-          start: _customStart ?? now.subtract(const Duration(days: 7)),
-          end: _customEnd ?? now,
-        );
-    }
-  }
 
-  Future<void> _loadStats() async {
-    // 自定义模式下未选择日期范围时不加载数据
-    if (_period == _Period.custom && (_customStart == null || _customEnd == null)) {
+  // ── Data loading ──
+
+  Future<void> _loadInitialStats() async {
+    try {
+      final now = DateTime.now();
+      final weekStartMs = _weekRange.start.millisecondsSinceEpoch;
+      final monthStartMs = _monthRange.start.millisecondsSinceEpoch;
+      final todayEndMs = DateTime(now.year, now.month, now.day, 23, 59, 59)
+          .millisecondsSinceEpoch;
+
+      final sixMonthsAgo = DateTime(now.year, now.month - 5, 1).millisecondsSinceEpoch;
+
+      // 并行查询：周范围 + 月范围 + 6个月趋势 + 完成计数
+      final results = await Future.wait([
+        _db.getWorkoutRecordsByDateRange(weekStartMs, todayEndMs),
+        _db.getWorkoutRecordsByDateRange(monthStartMs, todayEndMs),
+        _db.getWorkoutRecordsByDateRange(sixMonthsAgo, todayEndMs),
+        _db.getWorkoutRecordsByDateRange(
+            monthStartMs > weekStartMs ? weekStartMs : monthStartMs, todayEndMs),
+      ]);
+
+      // 并行构建周和月的统计数据
+      final weekData = await _buildStatsData(results[0], _weekRange, isCustom: false);
+      final monthData = await _buildStatsData(results[1], _monthRange, isCustom: false);
+
+      if (!mounted) return;
       setState(() {
+        _weekData = weekData;
+        _monthData = monthData;
+        _monthlyCounts = _computeMonthlyCounts(results[2]);
+        _updateCompletionCounts(results[3]);
         _loading = false;
-        _trainingCount = 0;
-        _totalExercises = 0;
-        _totalSets = 0;
-        _totalVolume = 0;
-        _prRecords = {};
-        _customDayCounts = [];
       });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      debugPrint('加载统计数据失败: $e');
+    }
+  }
+
+  Future<void> _loadCustomStats() async {
+    if (_customStart == null || _customEnd == null) {
+      setState(() => _customData = _StatsData.empty);
       return;
     }
-
     try {
-    final range = _currentRange;
-    final startMs = range.start.millisecondsSinceEpoch;
-    // Include full end day
-    final endMs = DateTime(range.end.year, range.end.month, range.end.day, 23, 59, 59)
-        .millisecondsSinceEpoch;
+      final range = _customRange;
+      final startMs = range.start.millisecondsSinceEpoch;
+      final endMs = DateTime(range.end.year, range.end.month, range.end.day, 23, 59, 59)
+          .millisecondsSinceEpoch;
+      final workouts = await _db.getWorkoutRecordsByDateRange(startMs, endMs);
+      final data = await _buildStatsData(workouts, range, isCustom: true);
+      if (!mounted) return;
+      setState(() => _customData = data);
+    } catch (e) {
+      debugPrint('加载自定义统计数据失败: $e');
+    }
+  }
 
-    final workouts = await _db.getWorkoutRecordsByDateRange(startMs, endMs);
+  // ── Helpers ──
 
+  DateTimeRange get _weekRange {
+    final now = DateTime.now();
+    final weekday = now.weekday;
+    final start = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: weekday - 1));
+    return DateTimeRange(start: start, end: now);
+  }
+
+  DateTimeRange get _monthRange {
+    final now = DateTime.now();
+    return DateTimeRange(start: DateTime(now.year, now.month, 1), end: now);
+  }
+
+  DateTimeRange get _customRange {
+    final now = DateTime.now();
+    return DateTimeRange(
+      start: _customStart ?? now.subtract(const Duration(days: 7)),
+      end: _customEnd ?? now,
+    );
+  }
+
+  Future<_StatsData> _buildStatsData(List<WorkoutRecord> workouts, DateTimeRange range,
+      {required bool isCustom}) async {
     int totalSets = 0;
-    double totalVolume = 0;
     final Set<String> exerciseNames = {};
     final Map<String, double> bestWeightMap = {};
     final Map<String, double> bestVolumeMap = {};
 
-    // Collect exercise records per workout
     for (final w in workouts) {
       final exercises = await _db.getExerciseRecordsForWorkout(w.id!);
       for (final e in exercises) {
-        // 只统计已完成的组
         if (!e.isCompleted) continue;
         totalSets++;
         exerciseNames.add(e.exerciseName);
-
         final weight = e.actualWeight ?? 0;
         final reps = e.actualReps ?? 0;
         final volume = weight * reps;
-        totalVolume += volume;
-
-        // PR tracking (strength only - check exerciseType field)
         if (e.exerciseType != 'cardio' && e.exerciseType != 'Cardio') {
-          if (weight > (bestWeightMap[e.exerciseName] ?? 0)) {
-            bestWeightMap[e.exerciseName] = weight;
-          }
-          if (volume > (bestVolumeMap[e.exerciseName] ?? 0)) {
-            bestVolumeMap[e.exerciseName] = volume;
-          }
+          if (weight > (bestWeightMap[e.exerciseName] ?? 0)) bestWeightMap[e.exerciseName] = weight;
+          if (volume > (bestVolumeMap[e.exerciseName] ?? 0)) bestVolumeMap[e.exerciseName] = volume;
         }
       }
     }
 
-    // Build PR records (exclude cardio - only exercises with weight > 0)
     final prRecords = <String, _PRRecord>{};
     for (final name in exerciseNames) {
       final bw = bestWeightMap[name] ?? 0;
       final bv = bestVolumeMap[name] ?? 0;
-      if (bw > 0 || bv > 0) {
-        prRecords[name] = _PRRecord(
-          bestWeight: bw,
-          bestVolume: bv,
-        );
-      }
+      if (bw > 0 || bv > 0) prRecords[name] = _PRRecord(bestWeight: bw, bestVolume: bv);
     }
 
-    // Weekly frequency
-    final weeklyCounts = _computeWeeklyCounts(workouts, range.start, range.end);
-
-    // Completed workout counts for current week and month
-    final now = DateTime.now();
-    final weekStart = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1));
-    final monthStart = DateTime(now.year, now.month, 1);
-    final weekStartMs = weekStart.millisecondsSinceEpoch;
-    final monthStartMs = monthStart.millisecondsSinceEpoch;
-    final todayEndMs = DateTime(now.year, now.month, now.day, 23, 59, 59)
-        .millisecondsSinceEpoch;
-
-    // Monthly frequency (last 6 months) - 独立查询，不受当前选择范围限制
-    final sixMonthsAgo = DateTime(now.year, now.month - 5, 1).millisecondsSinceEpoch;
-    final allWorkoutsForChart = await _db.getWorkoutRecordsByDateRange(sixMonthsAgo, todayEndMs);
-    final monthlyCounts = _computeMonthlyCounts(allWorkoutsForChart);
-
-    // Custom range frequency - 按天统计选中范围内的训练频率
-    final customDayCounts = _period == _Period.custom
+    final dayCounts = isCustom
         ? _computeCustomDayCounts(workouts, range.start, range.end)
         : <_DayCount>[];
 
-    final allWorkouts = await _db.getWorkoutRecordsByDateRange(
-        monthStartMs > weekStartMs ? weekStartMs : monthStartMs, todayEndMs);
+    return _StatsData(
+      trainingCount: workouts.length,
+      totalExercises: exerciseNames.length,
+      totalSets: totalSets,
+      prRecords: prRecords,
+      dayCounts: dayCounts,
+    );
+  }
 
+  void _updateCompletionCounts(List<WorkoutRecord> allWorkouts) {
+    final now = DateTime.now();
+    final weekStartMs = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1)).millisecondsSinceEpoch;
+    final monthStartMs = DateTime(now.year, now.month, 1).millisecondsSinceEpoch;
     int weekCompleted = 0;
     int monthCompleted = 0;
     for (final w in allWorkouts) {
@@ -195,51 +224,8 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
         if (w.date >= monthStartMs) monthCompleted++;
       }
     }
-
-    if (!mounted) return;
-    setState(() {
-      _trainingCount = workouts.length;
-      _totalExercises = exerciseNames.length;
-      _totalSets = totalSets;
-      _totalVolume = totalVolume;
-      _prRecords = prRecords;
-      _weeklyCounts = weeklyCounts;
-      _monthlyCounts = monthlyCounts;
-      _customDayCounts = customDayCounts;
-      _weekCompletedCount = weekCompleted;
-      _monthCompletedCount = monthCompleted;
-      _loading = false;
-    });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => _loading = false);
-      debugPrint('加载统计数据失败: $e');
-    }
-  }
-
-  List<_WeekCount> _computeWeeklyCounts(
-      List<WorkoutRecord> workouts, DateTime start, DateTime end) {
-    // Group workouts by ISO week
-    final Map<String, int> weekMap = {};
-    // Initialize all weeks in range
-    var cursor = start;
-    while (!cursor.isAfter(end)) {
-      final weekStart = cursor.subtract(Duration(days: cursor.weekday - 1));
-      final key = DateFormat('MM/dd').format(weekStart);
-      weekMap.putIfAbsent(key, () => 0);
-      cursor = cursor.add(const Duration(days: 1));
-    }
-
-    for (final w in workouts) {
-      final date = DateTime.fromMillisecondsSinceEpoch(w.date);
-      final weekStart = date.subtract(Duration(days: date.weekday - 1));
-      final key = DateFormat('MM/dd').format(weekStart);
-      weekMap[key] = (weekMap[key] ?? 0) + 1;
-    }
-
-    final sorted = weekMap.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
-    return sorted.map((e) => _WeekCount(e.key, e.value)).toList();
+    _weekCompletedCount = weekCompleted;
+    _monthCompletedCount = monthCompleted;
   }
 
   List<_MonthCount> _computeMonthlyCounts(List<WorkoutRecord> workouts) {
@@ -340,8 +326,13 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
           _customEnd = picked;
         }
       });
-      _loadStats();
+      _loadCustomStats();
     }
+  }
+
+  Future<void> _refreshAll() async {
+    await _loadInitialStats();
+    if (_customStart != null && _customEnd != null) await _loadCustomStats();
   }
 
   @override
@@ -378,7 +369,7 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
 
   Widget _buildWeekView(ThemeData theme) {
     return RefreshIndicator(
-      onRefresh: _loadStats,
+      onRefresh: _refreshAll,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -394,7 +385,7 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
 
   Widget _buildMonthView(ThemeData theme) {
     return RefreshIndicator(
-      onRefresh: _loadStats,
+      onRefresh: _refreshAll,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -415,7 +406,7 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
     final hasRange = _customStart != null && _customEnd != null;
 
     return RefreshIndicator(
-      onRefresh: _loadStats,
+      onRefresh: _refreshAll,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -507,9 +498,9 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
             const SizedBox(height: 16),
             Row(
               children: [
-                _statTile('训练次数', '$_trainingCount', '次', theme),
-                _statTile('动作数', '$_totalExercises', '个', theme),
-                _statTile('总组数', '$_totalSets', '组', theme),
+                _statTile('训练次数', '${_displayData.trainingCount}', '次', theme),
+                _statTile('动作数', '${_displayData.totalExercises}', '个', theme),
+                _statTile('总组数', '${_displayData.totalSets}', '组', theme),
               ],
             ),
             const SizedBox(height: 12),
@@ -545,82 +536,6 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
             textAlign: TextAlign.center,
           ),
         ],
-      ),
-    );
-  }
-
-  // ──────────────────── Weekly Chart ────────────────────
-
-  Widget _buildWeeklyChart(ThemeData theme) {
-    if (_weeklyCounts.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Text('暂无训练数据', style: theme.textTheme.bodyLarge),
-        ),
-      );
-    }
-
-    final maxCount =
-        _weeklyCounts.fold<int>(0, (m, w) => w.count > m ? w.count : m);
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('每周训练频率', style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            )),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 140,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: _weeklyCounts.map((wc) {
-                  final ratio = maxCount > 0 ? wc.count / maxCount : 0.0;
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 3),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            '${wc.count}',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 400),
-                            height: ratio * 100,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.75),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            wc.label,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              fontSize: 10,
-                              color: Colors.grey[600],
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -696,83 +611,10 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
     );
   }
 
-  // ──────────────────── Custom Day Chart ────────────────────
-
-  Widget _buildCustomDayChart(ThemeData theme) {
-    if (_customDayCounts.isEmpty) {
-      return const SizedBox.shrink();
-    }
-
-    final maxCount =
-        _customDayCounts.fold<int>(0, (m, d) => d.count > m ? d.count : m);
-
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('训练频率', style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            )),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 140,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: _customDayCounts.map((dc) {
-                  final ratio = maxCount > 0 ? dc.count / maxCount : 0.0;
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 1),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          if (dc.count > 0)
-                            Text(
-                              '${dc.count}',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 9,
-                              ),
-                            ),
-                          const SizedBox(height: 4),
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 400),
-                            height: ratio * 100,
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.75),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            dc.label,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              fontSize: 8,
-                              color: Colors.grey[600],
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // ──────────────────── PR Section ────────────────────
 
   Widget _buildPRSection(ThemeData theme) {
-    if (_prRecords.isEmpty) {
+    if (_displayData.prRecords.isEmpty) {
       return Card(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -781,7 +623,7 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
       );
     }
 
-    final sortedNames = _prRecords.keys.toList()..sort();
+    final sortedNames = _displayData.prRecords.keys.toList()..sort();
 
     return Card(
       elevation: 2,
@@ -796,7 +638,7 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
             )),
             const SizedBox(height: 12),
             ...sortedNames.map((name) {
-              final pr = _prRecords[name]!;
+              final pr = _displayData.prRecords[name]!;
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Row(
@@ -848,12 +690,6 @@ class _PRRecord {
   final double bestWeight;
   final double bestVolume;
   const _PRRecord({required this.bestWeight, required this.bestVolume});
-}
-
-class _WeekCount {
-  final String label;
-  final int count;
-  const _WeekCount(this.label, this.count);
 }
 
 class _MonthCount {
