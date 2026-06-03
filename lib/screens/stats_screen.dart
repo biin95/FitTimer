@@ -46,27 +46,29 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
-    _tabController.addListener(_onTabChanged);
+    _tabController.animation!.addListener(_onTabAnimationChanged);
     _loadStats();
   }
 
   @override
   void dispose() {
-    _tabController.removeListener(_onTabChanged);
+    _tabController.animation!.removeListener(_onTabAnimationChanged);
     _tabController.dispose();
     super.dispose();
   }
 
-  void _onTabChanged() {
-    if (!_tabController.indexIsChanging) return;
-    final newPeriod = _Period.values[_tabController.index];
-    if (newPeriod != _period) {
-      setState(() => _period = newPeriod);
-      if (newPeriod != _Period.custom) {
-        _loadStats();
-      } else if (_customStart != null && _customEnd != null) {
-        _loadStats();
-      }
+  void _onTabAnimationChanged() {
+    // 只在动画停稳（值为整数）时触发
+    final value = _tabController.animation!.value;
+    if (value != value.roundToDouble()) return;
+    final index = value.round();
+    final newPeriod = _Period.values[index];
+    if (newPeriod == _period) return;
+    setState(() => _period = newPeriod);
+    if (newPeriod != _Period.custom) {
+      _loadStats();
+    } else if (_customStart != null && _customEnd != null) {
+      _loadStats();
     }
   }
 
