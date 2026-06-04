@@ -6,7 +6,8 @@ import '../services/weather_service.dart';
 import 'workout_session_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onDataChanged;
+  const HomeScreen({super.key, this.onDataChanged});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -89,6 +90,8 @@ class _HomeScreenState extends State<HomeScreen> {
     ).then((_) {
       // Refresh calendar after returning from workout session
       _loadWorkouts();
+      // 通知统计页面刷新数据
+      widget.onDataChanged?.call();
     });
   }
 
@@ -103,6 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   // Motivational Quote
                   _buildQuoteCard(),
@@ -155,8 +159,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final daysInMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day;
     final firstDayWeekday = DateTime(_currentMonth.year, _currentMonth.month, 1).weekday;
 
-    // Grid needs 6 rows (max possible) with 7 columns
-    const totalCells = 42;
+    // 计算实际需要的行数（大部分月份 5 行就够了）
+    final totalCells = (firstDayWeekday - 1 + daysInMonth + 6) ~/ 7 * 7;
+    final rows = totalCells ~/ 7;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -164,17 +169,10 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            // Month Navigation
             _buildMonthNavigation(),
-
             const SizedBox(height: 16),
-
-            // Weekday Headers
             _buildWeekdayHeaders(),
-
             const SizedBox(height: 8),
-
-            // Calendar Grid
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -182,6 +180,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 crossAxisCount: 7,
                 mainAxisSpacing: 4,
                 crossAxisSpacing: 4,
+                childAspectRatio: 1,
               ),
               itemCount: totalCells,
               itemBuilder: (context, index) {
@@ -255,6 +254,9 @@ class _HomeScreenState extends State<HomeScreen> {
           break;
         case 'cardio':
           icons += '🏃';
+          break;
+        case 'interval':
+          icons += '⏱️';
           break;
         case 'mixed':
           icons += '🏋️🏃';

@@ -18,15 +18,20 @@ class _MainScaffoldState extends State<MainScaffold> {
   // Cache screen instances so state is preserved across tab switches
   late final List<Widget> _screens;
 
+  /// 当训练数据发生变化时刷新统计页面
+  void _onWorkoutDataChanged() {
+    statsScreenKey.currentState?.refresh();
+  }
+
   @override
   void initState() {
     super.initState();
-    _screens = const [
-      HomeScreen(),
-      TemplateScreen(),
-      ExerciseCatalogScreen(),
-      StatsScreen(),
-      SettingsScreen(),
+    _screens = [
+      HomeScreen(onDataChanged: _onWorkoutDataChanged),
+      const TemplateScreen(),
+      const ExerciseCatalogScreen(),
+      StatsScreen(key: statsScreenKey),
+      const SettingsScreen(),
     ];
   }
 

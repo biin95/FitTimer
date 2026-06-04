@@ -369,7 +369,10 @@ class _TemplateEditScreenState extends State<TemplateEditScreen> {
                     ),
                   )
                 : TextButton(
-                    onPressed: _saveTemplate,
+                    onPressed: () {
+                      FocusScope.of(context).unfocus();
+                      _saveTemplate();
+                    },
                     child: const Text(
                       '保存',
                       style: TextStyle(

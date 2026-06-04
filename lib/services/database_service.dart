@@ -7,6 +7,8 @@ import '../models/workout_record.dart';
 import '../models/exercise_record.dart';
 import '../models/workout_template.dart';
 import '../models/template_exercise.dart';
+import '../models/interval_training.dart';
+import '../models/interval_segment.dart';
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -26,7 +28,7 @@ class DatabaseService {
     final path = join(directory.path, 'fittimer.db');
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -66,6 +68,37 @@ class DatabaseService {
       await db.execute("ALTER TABLE exercise_records ADD COLUMN is_completed INTEGER DEFAULT 0");
       // Backfill: sets that had actual_reps filled were previously considered completed
       await db.execute('UPDATE exercise_records SET is_completed = 1 WHERE actual_reps IS NOT NULL');
+    }
+    if (oldVersion < 5) {
+      // Add interval training support
+      await db.execute('''
+        CREATE TABLE interval_trainings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          rounds INTEGER NOT NULL DEFAULT 1,
+          total_duration INTEGER NOT NULL,
+          created_at INTEGER NOT NULL
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE interval_segments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          training_id INTEGER NOT NULL,
+          sort_order INTEGER NOT NULL,
+          type TEXT NOT NULL,
+          duration_sec INTEGER NOT NULL,
+          name TEXT,
+          FOREIGN KEY (training_id) REFERENCES interval_trainings(id) ON DELETE CASCADE
+        )
+      ''');
+
+      // Add interval fields to exercise_records
+      await db.execute('ALTER TABLE exercise_records ADD COLUMN interval_id INTEGER');
+      await db.execute('ALTER TABLE exercise_records ADD COLUMN interval_rounds INTEGER');
+
+      // Add interval fields to template_exercises
+      await db.execute('ALTER TABLE template_exercises ADD COLUMN interval_rounds INTEGER');
     }
   }
 
@@ -134,6 +167,28 @@ class DatabaseService {
       CREATE TABLE settings (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE interval_trainings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        rounds INTEGER NOT NULL DEFAULT 1,
+        total_duration INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE interval_segments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        training_id INTEGER NOT NULL,
+        sort_order INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        duration_sec INTEGER NOT NULL,
+        name TEXT,
+        FOREIGN KEY (training_id) REFERENCES interval_trainings(id) ON DELETE CASCADE
       )
     ''');
   }
@@ -360,6 +415,122 @@ class DatabaseService {
     );
   }
 
+  // ==================== IntervalTraining CRUD ====================
+
+  Future<int> insertIntervalTraining(IntervalTraining training) async {
+    final db = await database;
+    return await db.insert('interval_trainings', training.toMap()..remove('id'));
+  }
+
+  Future<List<IntervalTraining>> getIntervalTrainings() async {
+    final db = await database;
+    final maps = await db.query('interval_trainings', orderBy: 'created_at DESC');
+    return maps.map((m) => IntervalTraining.fromMap(m)).toList();
+  }
+
+  Future<IntervalTraining?> getIntervalTraining(int id) async {
+    final db = await database;
+    final maps = await db.query(
+      'interval_trainings',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (maps.isEmpty) return null;
+    return IntervalTraining.fromMap(maps.first);
+  }
+
+  Future<int> updateIntervalTraining(IntervalTraining training) async {
+    final db = await database;
+    return await db.update(
+      'interval_trainings',
+      training.toMap(),
+      where: 'id = ?',
+      whereArgs: [training.id],
+    );
+  }
+
+  Future<int> deleteIntervalTraining(int id) async {
+    final db = await database;
+    // Delete associated segments first
+    await db.delete(
+      'interval_segments',
+      where: 'training_id = ?',
+      whereArgs: [id],
+    );
+    return await db.delete(
+      'interval_trainings',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // ==================== IntervalSegment CRUD ====================
+
+  Future<int> insertIntervalSegment(IntervalSegment segment) async {
+    final db = await database;
+    return await db.insert('interval_segments', segment.toMap()..remove('id'));
+  }
+
+  Future<List<IntervalSegment>> getIntervalSegments(int trainingId) async {
+    final db = await database;
+    final maps = await db.query(
+      'interval_segments',
+      where: 'training_id = ?',
+      whereArgs: [trainingId],
+      orderBy: 'sort_order ASC',
+    );
+    return maps.map((m) => IntervalSegment.fromMap(m)).toList();
+  }
+
+  Future<int> updateIntervalSegment(IntervalSegment segment) async {
+    final db = await database;
+    return await db.update(
+      'interval_segments',
+      segment.toMap(),
+      where: 'id = ?',
+      whereArgs: [segment.id],
+    );
+  }
+
+  Future<int> deleteIntervalSegment(int id) async {
+    final db = await database;
+    return await db.delete(
+      'interval_segments',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteIntervalSegmentsForTraining(int trainingId) async {
+    final db = await database;
+    return await db.delete(
+      'interval_segments',
+      where: 'training_id = ?',
+      whereArgs: [trainingId],
+    );
+  }
+
+  Future<int> updateIntervalSegmentsOrder(int trainingId, List<IntervalSegment> segments) async {
+    final db = await database;
+    int count = 0;
+    for (int i = 0; i < segments.length; i++) {
+      final segment = segments[i].copyWith(sortOrder: i, trainingId: trainingId);
+      if (segment.id != null) {
+        await db.update(
+          'interval_segments',
+          segment.toMap(),
+          where: 'id = ?',
+          whereArgs: [segment.id],
+        );
+        count++;
+      } else {
+        await db.insert('interval_segments', segment.toMap()..remove('id'));
+        count++;
+      }
+    }
+    return count;
+  }
+
   // ==================== Settings ====================
 
   Future<String?> getSetting(String key) async {
@@ -397,6 +568,8 @@ class DatabaseService {
     final exerciseMaps = await db.query('exercise_records');
     final templateMaps = await db.query('workout_templates');
     final templateExerciseMaps = await db.query('template_exercises');
+    final intervalTrainingMaps = await db.query('interval_trainings');
+    final intervalSegmentMaps = await db.query('interval_segments');
     final settingsMaps = await db.query('settings');
 
     return {
@@ -404,6 +577,8 @@ class DatabaseService {
       'exercise_records': exerciseMaps,
       'workout_templates': templateMaps,
       'template_exercises': templateExerciseMaps,
+      'interval_trainings': intervalTrainingMaps,
+      'interval_segments': intervalSegmentMaps,
       'settings': settingsMaps,
       'exported_at': DateTime.now().millisecondsSinceEpoch,
     };
@@ -414,6 +589,8 @@ class DatabaseService {
 
     await db.transaction((txn) async {
       // Clear existing data
+      await txn.delete('interval_segments');
+      await txn.delete('interval_trainings');
       await txn.delete('exercise_records');
       await txn.delete('workout_records');
       await txn.delete('template_exercises');
@@ -445,6 +622,20 @@ class DatabaseService {
       if (data['template_exercises'] != null) {
         for (var record in data['template_exercises'] as List) {
           await txn.insert('template_exercises', Map<String, dynamic>.from(record as Map));
+        }
+      }
+
+      // Import interval trainings
+      if (data['interval_trainings'] != null) {
+        for (var record in data['interval_trainings'] as List) {
+          await txn.insert('interval_trainings', Map<String, dynamic>.from(record as Map));
+        }
+      }
+
+      // Import interval segments
+      if (data['interval_segments'] != null) {
+        for (var record in data['interval_segments'] as List) {
+          await txn.insert('interval_segments', Map<String, dynamic>.from(record as Map));
         }
       }
 

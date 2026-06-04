@@ -8,6 +8,7 @@ import '../models/template_exercise.dart';
 import '../services/database_service.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
+import 'interval_config_screen.dart';
 
 class WorkoutSessionScreen extends StatefulWidget {
   final DateTime date;
@@ -168,6 +169,16 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
         _exercises = grouped.entries.map((e) {
           e.value.sort((a, b) => a.setNumber.compareTo(b.setNumber));
           final first = e.value.first;
+          if (first.exerciseType == 'interval') {
+            return _SessionExercise(
+              name: e.key,
+              restDuration: 0,
+              sets: [],
+              exerciseType: 'interval',
+              durationMinutes: first.durationMinutes,
+              intervalRounds: first.intervalRounds,
+            );
+          }
           if (first.exerciseType == 'cardio') {
             return _SessionExercise(
               name: e.key,
@@ -253,6 +264,92 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
       _draftSaved = false;
     });
     _scrollToBottom();
+  }
+
+  Future<void> _addIntervalTraining() async {
+    // 导航到间歇训练配置页面，等待训练结果
+    final result = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (context) => const IntervalConfigScreen(),
+      ),
+    );
+
+    // 训练完成，保存记录
+    if (result != null && mounted) {
+      await _saveIntervalTrainingResult(result);
+    }
+  }
+
+  /// 保存间歇训练结果到数据库
+  Future<void> _saveIntervalTrainingResult(Map<String, dynamic> result) async {
+    try {
+      await _ensureWorkoutRecord();
+
+      final trainingName = result['trainingName'] as String? ?? '间歇训练';
+      final rounds = result['rounds'] as int? ?? 0;
+      final totalDuration = result['totalDuration'] as int? ?? 0;
+      final exerciseDuration = result['exerciseDuration'] as int? ?? 0;
+      final completed = result['completed'] as bool? ?? false;
+      final startedAt = result['startedAt'] as int? ?? DateTime.now().millisecondsSinceEpoch;
+      final completedAt = result['completedAt'] as int? ?? DateTime.now().millisecondsSinceEpoch;
+
+      // 保存为 exercise_record (type=interval)
+      await _db.insertExerciseRecord(ExerciseRecord(
+        workoutId: _workoutRecord!.id!,
+        exerciseName: trainingName,
+        setNumber: 1,
+        targetReps: rounds,
+        actualReps: rounds,
+        targetWeight: 0,
+        actualWeight: null,
+        restDuration: 0,
+        createdAt: startedAt,
+        exerciseType: 'interval',
+        durationMinutes: totalDuration ~/ 60,
+        isCompleted: completed,
+        intervalRounds: rounds,
+      ));
+
+      // 更新 workout_record 的 sport_type
+      final hasStrength = _exercises.any((e) => e.exerciseType == 'strength');
+      final hasCardio = _exercises.any((e) => e.exerciseType == 'cardio');
+      String sportType = 'interval';
+      if (hasStrength || hasCardio) {
+        sportType = 'mixed';
+      }
+      final updated = WorkoutRecord(
+        id: _workoutRecord!.id,
+        date: _workoutRecord!.date,
+        sportType: sportType,
+        startedAt: _workoutRecord!.startedAt,
+        completedAt: completedAt,
+        isCompleted: completed,
+      );
+      await _db.updateWorkoutRecord(updated);
+      _workoutRecord = updated;
+
+      // 刷新列表
+      await _loadOrCreateWorkout();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('间歇训练已记录：$trainingName ${rounds}轮'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('保存间歇训练记录失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('保存失败: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   void _scrollToBottom() {
@@ -508,14 +605,29 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
 
   // --- Save workout ---
   Future<void> _saveWorkout({required bool markCompleted}) async {
+    // 如果所有动作都被删了，清理空记录而不是保存空 workout
+    if (_exercises.isEmpty) {
+      if (_workoutRecord != null) {
+        await _db.deleteExerciseRecordsForWorkout(_workoutRecord!.id!);
+        await _db.deleteWorkoutRecord(_workoutRecord!.id!);
+        _workoutRecord = null;
+      }
+      _hasUnsavedChanges = false;
+      return;
+    }
+
     await _ensureWorkoutRecord();
 
     // Determine sport type from exercise types
     final hasStrength = _exercises.any((e) => e.exerciseType == 'strength');
     final hasCardio = _exercises.any((e) => e.exerciseType == 'cardio');
+    final hasInterval = _exercises.any((e) => e.exerciseType == 'interval');
     String sportType = 'strength';
-    if (hasStrength && hasCardio) {
+    final typeCount = (hasStrength ? 1 : 0) + (hasCardio ? 1 : 0) + (hasInterval ? 1 : 0);
+    if (typeCount > 1) {
       sportType = 'mixed';
+    } else if (hasInterval) {
+      sportType = 'interval';
     } else if (hasCardio) {
       sportType = 'cardio';
     }
@@ -536,7 +648,23 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     await _db.deleteExerciseRecordsForWorkout(_workoutRecord!.id!);
     for (int i = 0; i < _exercises.length; i++) {
       final ex = _exercises[i];
-      if (ex.exerciseType == 'cardio') {
+      if (ex.exerciseType == 'interval') {
+        await _db.insertExerciseRecord(ExerciseRecord(
+          workoutId: _workoutRecord!.id!,
+          exerciseName: ex.name.isEmpty ? '间歇训练 ${i + 1}' : ex.name,
+          setNumber: 1,
+          targetReps: ex.intervalRounds ?? 0,
+          actualReps: ex.intervalRounds,
+          targetWeight: 0,
+          actualWeight: null,
+          restDuration: 0,
+          exerciseType: 'interval',
+          durationMinutes: ex.durationMinutes,
+          isCompleted: true,
+          intervalRounds: ex.intervalRounds,
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+        ));
+      } else if (ex.exerciseType == 'cardio') {
         await _db.insertExerciseRecord(ExerciseRecord(
           workoutId: _workoutRecord!.id!,
           exerciseName: ex.name.isEmpty ? '有氧运动 ${i + 1}' : ex.name,
@@ -561,9 +689,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
             exerciseName: ex.name.isEmpty ? '动作 ${i + 1}' : ex.name,
             setNumber: j + 1,
             targetReps: s.targetReps,
-            actualReps: s.actualReps ?? s.targetReps,  // 始终保存实际值（含用户编辑）
+            actualReps: s.actualReps ?? s.targetReps,
             targetWeight: s.targetWeight,
-            actualWeight: s.actualWeight ?? s.targetWeight,  // 始终保存实际值（含用户编辑）
+            actualWeight: s.actualWeight ?? s.targetWeight,
             restDuration: ex.restDuration,
             createdAt: DateTime.now().millisecondsSinceEpoch,
             isCompleted: s.isCompleted,
@@ -777,6 +905,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
               final isFirst = index == 0;
               final isLast = index == _exercises.length - 1;
               final isCardio = ex.exerciseType == 'cardio';
+              final isInterval = ex.exerciseType == 'interval';
               final completedSets = ex.sets.where((s) => s.isCompleted).length;
 
               return Card(
@@ -790,7 +919,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                         width: 28,
                         height: 28,
                         decoration: BoxDecoration(
-                          color: isCardio ? Colors.orange : Theme.of(context).colorScheme.primary,
+                          color: isInterval
+                              ? Colors.purple
+                              : isCardio
+                                  ? Colors.orange
+                                  : Theme.of(context).colorScheme.primary,
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: Center(
@@ -810,7 +943,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                               ex.name.isEmpty ? '(未命名)' : ex.name,
                               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                             ),
-                            if (isCardio)
+                            if (isInterval)
+                              Text(
+                                '间歇训练 ${ex.intervalRounds ?? 0}轮 · ${ex.durationMinutes ?? 0}分钟',
+                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                              )
+                            else if (isCardio)
                               Text('有氧运动', style: TextStyle(fontSize: 12, color: Colors.grey[600]))
                             else if (ex.sets.isNotEmpty)
                               Text(
@@ -862,16 +1000,18 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     final dateStr =
         '${widget.date.year}-${widget.date.month.toString().padLeft(2, '0')}-${widget.date.day.toString().padLeft(2, '0')}';
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        final shouldPop = await _onWillPop();
-        if (shouldPop && context.mounted) {
-          Navigator.of(context).pop();
-        }
-      },
-      child: Scaffold(
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) async {
+          if (didPop) return;
+          final shouldPop = await _onWillPop();
+          if (shouldPop && context.mounted) {
+            Navigator.of(context).pop();
+          }
+        },
+        child: Scaffold(
         appBar: AppBar(
           title: Text(_isSorting ? '调整顺序' : '$dateStr 训练'),
           centerTitle: true,
@@ -899,11 +1039,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                   if (v == 'template') _applyTemplate();
                   if (v == 'add') _addExercise();
                   if (v == 'add_cardio') _addCardioExercise();
+                  if (v == 'add_interval') _addIntervalTraining();
                 },
                 itemBuilder: (_) => [
                   const PopupMenuItem(value: 'template', child: Text('套用模板')),
                   const PopupMenuItem(value: 'add', child: Text('添加力量训练')),
                   const PopupMenuItem(value: 'add_cardio', child: Text('添加有氧运动')),
+                  const PopupMenuItem(value: 'add_interval', child: Text('添加间歇训练')),
                 ],
               ),
           ],
@@ -940,10 +1082,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                             controller: _scrollController,
                             padding: const EdgeInsets.all(16),
                             itemCount: _exercises.length,
-                            itemBuilder: (_, i) =>
-                                _exercises[i].exerciseType == 'cardio'
-                                    ? _buildCardioCard(i)
-                                    : _buildExerciseCard(i),
+                            itemBuilder: (_, i) {
+                              final ex = _exercises[i];
+                              if (ex.exerciseType == 'interval') return _buildIntervalCard(i);
+                              if (ex.exerciseType == 'cardio') return _buildCardioCard(i);
+                              return _buildExerciseCard(i);
+                            },
                           ),
                   ),
 
@@ -964,6 +1108,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
               ),
         floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       ),
+    ),
     );
   }
 
@@ -1414,6 +1559,65 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     );
   }
 
+  Widget _buildIntervalCard(int exerciseIndex) {
+    final exercise = _exercises[exerciseIndex];
+    final duration = exercise.durationMinutes ?? 0;
+    final rounds = exercise.intervalRounds ?? 0;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: Colors.purple,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Center(
+                child: Text(
+                  '${exerciseIndex + 1}',
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.timer, size: 20, color: Colors.purple),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    exercise.name.isEmpty ? '间歇训练' : exercise.name,
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  Text(
+                    '${rounds}轮 · ${duration}分钟',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete_outline,
+                  color: Colors.red, size: 20),
+              onPressed: () => _removeExercise(exerciseIndex),
+              tooltip: '删除',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _removeSet(int exerciseIndex, int setIndex) {
     setState(() {
       _exercises[exerciseIndex].sets.removeAt(setIndex);
@@ -1533,11 +1737,12 @@ class _SessionExercise {
   String name;
   int restDuration;
   List<_SessionSet> sets;
-  String exerciseType; // 'strength' or 'cardio'
+  String exerciseType; // 'strength' / 'cardio' / 'interval'
   int? durationMinutes;
   double? distanceKm;
   double? speed;
   double? incline;
+  int? intervalRounds;
 
   _SessionExercise({
     required this.name,
@@ -1548,6 +1753,7 @@ class _SessionExercise {
     this.distanceKm,
     this.speed,
     this.incline,
+    this.intervalRounds,
   });
 }
 

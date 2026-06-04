@@ -7,11 +7,12 @@ class TemplateExercise {
   final double targetWeight;
   final int restDuration; // seconds
   final int sortOrder;
-  final String exerciseType; // 'strength' or 'cardio'
-  final int? durationMinutes; // cardio only
+  final String exerciseType; // 'strength' / 'cardio' / 'interval'
+  final int? durationMinutes; // cardio/interval only
   final double? distanceKm; // cardio only
   final double? speed; // cardio only (km/h)
   final double? incline; // cardio only (percentage)
+  final int? intervalRounds; // 间歇训练轮数（仅 interval 类型）
 
   TemplateExercise({
     this.id,
@@ -27,6 +28,7 @@ class TemplateExercise {
     this.distanceKm,
     this.speed,
     this.incline,
+    this.intervalRounds,
   });
 
   Map<String, dynamic> toMap() {
@@ -44,6 +46,7 @@ class TemplateExercise {
       'distance_km': distanceKm,
       'speed': speed,
       'incline': incline,
+      'interval_rounds': intervalRounds,
     };
   }
 
@@ -68,6 +71,7 @@ class TemplateExercise {
       incline: map['incline'] != null
           ? (map['incline'] as num).toDouble()
           : null,
+      intervalRounds: map['interval_rounds'] as int?,
     );
   }
 }

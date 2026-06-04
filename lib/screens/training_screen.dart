@@ -935,7 +935,10 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => _completeSet(exIdx, setIdx),
+                onPressed: () {
+                  FocusScope.of(context).unfocus();
+                  _completeSet(exIdx, setIdx);
+                },
                 icon: const Icon(Icons.check, size: 18),
                 label: const Text('完成本组'),
                 style: ElevatedButton.styleFrom(

@@ -5,7 +5,7 @@
 - **路径**：`E:\FitTimer`
 - **技术栈**：Flutter / Dart
 - **目标平台**：Android（一加12、Android 16 API 36、已 Root）
-- **当前版本**：v1.5.2
+- **当前版本**：v1.5.3
 
 ## 项目结构
 

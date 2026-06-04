@@ -9,12 +9,14 @@ class ExerciseRecord {
   final double? actualWeight;
   final int restDuration; // seconds
   final int createdAt;
-  final String exerciseType; // 'strength' or 'cardio'
-  final int? durationMinutes; // cardio only
+  final String exerciseType; // 'strength' / 'cardio' / 'interval'
+  final int? durationMinutes; // cardio/interval only
   final double? distanceKm; // cardio only
   final double? speed; // cardio only (km/h)
   final double? incline; // cardio only (percentage)
   final bool isCompleted; // 是否完成
+  final int? intervalId; // 间歇训练 ID（仅 interval 类型）
+  final int? intervalRounds; // 完成的轮数（仅 interval 类型）
 
   ExerciseRecord({
     this.id,
@@ -33,6 +35,8 @@ class ExerciseRecord {
     this.speed,
     this.incline,
     this.isCompleted = false,
+    this.intervalId,
+    this.intervalRounds,
   });
 
   Map<String, dynamic> toMap() {
@@ -53,6 +57,8 @@ class ExerciseRecord {
       'speed': speed,
       'incline': incline,
       'is_completed': isCompleted ? 1 : 0,
+      'interval_id': intervalId,
+      'interval_rounds': intervalRounds,
     };
   }
 
@@ -82,6 +88,8 @@ class ExerciseRecord {
           ? (map['incline'] as num).toDouble()
           : null,
       isCompleted: (map['is_completed'] as int?) == 1,
+      intervalId: map['interval_id'] as int?,
+      intervalRounds: map['interval_rounds'] as int?,
     );
   }
 }

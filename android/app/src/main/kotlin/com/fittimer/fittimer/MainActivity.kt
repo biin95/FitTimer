@@ -1,9 +1,12 @@
 package com.fittimer.fittimer
 
 import android.app.AlarmManager
+import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.media.RingtoneManager
 import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
@@ -19,6 +22,7 @@ class MainActivity : FlutterActivity() {
     private val REST_SERVICE_CHANNEL = "com.fittimer/rest_service"
     private val ALARM_CHANNEL = "com.fittimer/alarm"
     private val EXACT_ALARM_CHANNEL = "com.fittimer/exact_alarm"
+    private val SOUND_CHANNEL = "com.fittimer/sound"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -181,6 +185,27 @@ class MainActivity : FlutterActivity() {
                             result.success(null)
                         } catch (e: Exception) {
                             result.error("OPEN_FAILED", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
+        // 音效播放
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SOUND_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "playAlert" -> {
+                        try {
+                            val notification: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+                            val ringtone = RingtoneManager.getRingtone(applicationContext, notification)
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                ringtone?.volume = 1.0f
+                            }
+                            ringtone?.play()
+                            result.success(null)
+                        } catch (e: Exception) {
+                            result.error("SOUND_FAILED", e.message, null)
                         }
                     }
                     else -> result.notImplemented()

@@ -7,8 +7,11 @@ class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
 
   @override
-  State<StatsScreen> createState() => _StatsScreenState();
+  State<StatsScreen> createState() => StatsScreenState();
 }
+
+// 用于从外部触发刷新的 GlobalKey
+final statsScreenKey = GlobalKey<StatsScreenState>();
 
 enum _Period { week, month, custom }
 
@@ -16,22 +19,27 @@ class _StatsData {
   final int trainingCount;
   final int totalExercises;
   final int totalSets;
+  final int intervalCount;
+  final int intervalDuration; // 间歇训练总时长（分钟）
   final Map<String, _PRRecord> prRecords;
   final List<_DayCount> dayCounts;
   const _StatsData({
     required this.trainingCount,
     required this.totalExercises,
     required this.totalSets,
+    required this.intervalCount,
+    required this.intervalDuration,
     required this.prRecords,
     required this.dayCounts,
   });
   static const empty = _StatsData(
     trainingCount: 0, totalExercises: 0, totalSets: 0,
+    intervalCount: 0, intervalDuration: 0,
     prRecords: {}, dayCounts: [],
   );
 }
 
-class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStateMixin {
+class StatsScreenState extends State<StatsScreen> with SingleTickerProviderStateMixin {
   final DatabaseService _db = DatabaseService();
   late TabController _tabController;
 
@@ -171,6 +179,8 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
   Future<_StatsData> _buildStatsData(List<WorkoutRecord> workouts, DateTimeRange range,
       {required bool isCustom}) async {
     int totalSets = 0;
+    int intervalCount = 0;
+    int intervalDuration = 0;
     final Set<String> exerciseNames = {};
     final Map<String, double> bestWeightMap = {};
     final Map<String, double> bestVolumeMap = {};
@@ -179,14 +189,19 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
       final exercises = await _db.getExerciseRecordsForWorkout(w.id!);
       for (final e in exercises) {
         if (!e.isCompleted) continue;
-        totalSets++;
-        exerciseNames.add(e.exerciseName);
-        final weight = e.actualWeight ?? 0;
-        final reps = e.actualReps ?? 0;
-        final volume = weight * reps;
-        if (e.exerciseType != 'cardio' && e.exerciseType != 'Cardio') {
-          if (weight > (bestWeightMap[e.exerciseName] ?? 0)) bestWeightMap[e.exerciseName] = weight;
-          if (volume > (bestVolumeMap[e.exerciseName] ?? 0)) bestVolumeMap[e.exerciseName] = volume;
+        if (e.exerciseType == 'interval') {
+          intervalCount++;
+          intervalDuration += e.durationMinutes ?? 0;
+        } else {
+          totalSets++;
+          exerciseNames.add(e.exerciseName);
+          final weight = e.actualWeight ?? 0;
+          final reps = e.actualReps ?? 0;
+          final volume = weight * reps;
+          if (e.exerciseType != 'cardio' && e.exerciseType != 'Cardio') {
+            if (weight > (bestWeightMap[e.exerciseName] ?? 0)) bestWeightMap[e.exerciseName] = weight;
+            if (volume > (bestVolumeMap[e.exerciseName] ?? 0)) bestVolumeMap[e.exerciseName] = volume;
+          }
         }
       }
     }
@@ -206,6 +221,8 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
       trainingCount: workouts.length,
       totalExercises: exerciseNames.length,
       totalSets: totalSets,
+      intervalCount: intervalCount,
+      intervalDuration: intervalDuration,
       prRecords: prRecords,
       dayCounts: dayCounts,
     );
@@ -333,6 +350,11 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
   Future<void> _refreshAll() async {
     await _loadInitialStats();
     if (_customStart != null && _customEnd != null) await _loadCustomStats();
+  }
+
+  /// 供外部调用的公开刷新方法
+  void refresh() {
+    _refreshAll();
   }
 
   @override
@@ -504,6 +526,14 @@ class _StatsScreenState extends State<StatsScreen> with SingleTickerProviderStat
               ],
             ),
             const SizedBox(height: 12),
+            if (_displayData.intervalCount > 0)
+              Row(
+                children: [
+                  _statTile('间歇训练', '${_displayData.intervalCount}', '次', theme),
+                  _statTile('间歇时长', '${_displayData.intervalDuration}', '分钟', theme),
+                ],
+              ),
+            if (_displayData.intervalCount > 0) const SizedBox(height: 12),
             if (_period != _Period.custom) ...[
               Row(
                 children: [
