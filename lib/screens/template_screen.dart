@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/workout_template.dart';
 import '../services/database_service.dart';
+import '../theme/app_colors.dart';
+import '../widgets/empty_state.dart';
 import 'template_edit_screen.dart';
 
 class TemplateScreen extends StatefulWidget {
@@ -74,7 +76,7 @@ class _TemplateScreenState extends State<TemplateScreen> {
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
             child: const Text('删除'),
           ),
         ],
@@ -127,26 +129,10 @@ class _TemplateScreenState extends State<TemplateScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.fitness_center,
-            size: 80,
-            color: Theme.of(context).colorScheme.outline,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '还没有训练模板，点击下方按钮创建',
-            style: TextStyle(
-              fontSize: 16,
-              color: Theme.of(context).colorScheme.outline,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+    return const EmptyState(
+      icon: Icons.fitness_center,
+      message: '还没有训练模板，点击下方按钮创建',
+      iconSize: 80,
     );
   }
 
@@ -202,10 +188,10 @@ class _TemplateCard extends StatelessWidget {
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 24),
         decoration: BoxDecoration(
-          color: Colors.red,
+          color: AppColors.danger,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Icon(Icons.delete, color: Colors.white),
+        child: const Icon(Icons.delete, color: AppColors.onColoredBadge),
       ),
       child: Card(
         margin: const EdgeInsets.symmetric(vertical: 6),
@@ -222,7 +208,7 @@ class _TemplateCard extends StatelessWidget {
             ),
             child: Icon(
               hasCardio ? Icons.directions_run : Icons.fitness_center,
-              color: hasCardio ? Colors.orange : Theme.of(context).colorScheme.primary,
+              color: hasCardio ? AppColors.warning : Theme.of(context).colorScheme.primary,
             ),
           ),
           title: Text(

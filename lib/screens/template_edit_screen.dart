@@ -3,6 +3,12 @@ import 'package:flutter/services.dart';
 import '../models/workout_template.dart';
 import '../models/template_exercise.dart';
 import '../services/database_service.dart';
+import '../theme/app_colors.dart';
+import '../widgets/badge_number.dart';
+import '../widgets/delete_button.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/move_arrows.dart';
+import '../widgets/snackbar_helper.dart';
 
 class TemplateEditScreen extends StatefulWidget {
   final WorkoutTemplate? template;
@@ -153,19 +159,9 @@ class _TemplateEditScreenState extends State<TemplateEditScreen> {
                   child: Row(
                     children: [
                       // 序号
-                      Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: isCardio ? Colors.orange : Theme.of(context).colorScheme.primary,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${index + 1}',
-                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ),
+                      BadgeNumber(
+                        color: isCardio ? AppColors.warning : Theme.of(context).colorScheme.primary,
+                        number: index + 1,
                       ),
                       const SizedBox(width: 12),
                       // 动作名称
@@ -178,40 +174,22 @@ class _TemplateEditScreenState extends State<TemplateEditScreen> {
                               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
                             ),
                             if (isCardio)
-                              Text('有氧运动', style: TextStyle(fontSize: 12, color: Colors.grey[600]))
+                              Text('有氧运动', style: TextStyle(fontSize: 12, color: AppColors.subtitle))
                             else
                               Text(
                                 '${ex.setsController.text}组 × ${ex.repsController.text}次'
                                 '${ex.weightController.text.isNotEmpty ? ' @ ${ex.weightController.text}kg' : ''}',
-                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                style: TextStyle(fontSize: 12, color: AppColors.subtitle),
                               ),
                           ],
                         ),
                       ),
                       // ↑↓ 按钮
-                      Column(
-                        children: [
-                          SizedBox(
-                            width: 36,
-                            height: 36,
-                            child: IconButton(
-                              icon: Icon(Icons.arrow_upward, size: 20, color: isFirst ? Colors.grey[300] : null),
-                              onPressed: isFirst ? null : () => _moveExerciseUp(index),
-                              padding: EdgeInsets.zero,
-                              tooltip: '上移',
-                            ),
-                          ),
-                          SizedBox(
-                            width: 36,
-                            height: 36,
-                            child: IconButton(
-                              icon: Icon(Icons.arrow_downward, size: 20, color: isLast ? Colors.grey[300] : null),
-                              onPressed: isLast ? null : () => _moveExerciseDown(index),
-                              padding: EdgeInsets.zero,
-                              tooltip: '下移',
-                            ),
-                          ),
-                        ],
+                      MoveArrows(
+                        isFirst: isFirst,
+                        isLast: isLast,
+                        onMoveUp: () => _moveExerciseUp(index),
+                        onMoveDown: () => _moveExerciseDown(index),
                       ),
                     ],
                   ),
@@ -307,24 +285,14 @@ class _TemplateEditScreenState extends State<TemplateEditScreen> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_isEditing ? '模板已更新' : '模板已创建'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        showSuccessSnackBar(context, _isEditing ? '模板已更新' : '模板已创建');
         Navigator.of(context).pop(true);
       }
     } catch (e) {
       setState(() => _isLoading = false);
       debugPrint('Error saving template: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('保存失败: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showErrorSnackBar(context, '保存失败: $e');
       }
     }
   }
@@ -432,29 +400,10 @@ class _TemplateEditScreenState extends State<TemplateEditScreen> {
                 // Exercise list
                 Expanded(
                   child: _exercises.isEmpty
-                      ? GestureDetector(
+                      ? EmptyState(
+                          icon: Icons.add_circle_outline,
+                          message: '点击添加训练动作',
                           onTap: _addExercise,
-                          child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.add_circle_outline,
-                                  size: 64,
-                                  color: Theme.of(context).colorScheme.outline,
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  '点击添加训练动作',
-                                  style: TextStyle(
-                                    color:
-                                        Theme.of(context).colorScheme.outline,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
                         )
                       : CustomScrollView(
                           controller: _scrollController,
@@ -504,23 +453,9 @@ class _TemplateEditScreenState extends State<TemplateEditScreen> {
                 const SizedBox(width: 8),
 
                 // Exercise number
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '${index + 1}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                BadgeNumber(
+                  color: Theme.of(context).colorScheme.primary,
+                  number: index + 1,
                 ),
                 const SizedBox(width: 12),
 
@@ -542,12 +477,9 @@ class _TemplateEditScreenState extends State<TemplateEditScreen> {
                 const SizedBox(width: 8),
 
                 // Delete button
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                DeleteButton(
                   onPressed: () => _removeExercise(index),
                   tooltip: '删除动作',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
                 ),
               ],
             ),
@@ -654,26 +586,12 @@ class _TemplateEditScreenState extends State<TemplateEditScreen> {
                   color: Theme.of(context).colorScheme.outline,
                 ),
                 const SizedBox(width: 8),
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: Colors.orange,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '${index + 1}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
+                BadgeNumber(
+                  color: AppColors.warning,
+                  number: index + 1,
                 ),
                 const SizedBox(width: 8),
-                const Icon(Icons.directions_run, size: 18, color: Colors.orange),
+                const Icon(Icons.directions_run, size: 18, color: AppColors.warning),
                 const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
@@ -689,12 +607,9 @@ class _TemplateEditScreenState extends State<TemplateEditScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                DeleteButton(
                   onPressed: () => _removeExercise(index),
                   tooltip: '删除动作',
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
                 ),
               ],
             ),

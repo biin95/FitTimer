@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../theme/app_colors.dart';
 import '../main.dart' show currentQuote;
 import '../services/database_service.dart';
 import '../services/weather_service.dart';
@@ -144,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 currentQuote.translation!,
                 style: TextStyle(
                   fontSize: 14,
-                  color: Colors.grey[600],
+                  color: AppColors.subtitle,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -239,7 +240,7 @@ class _HomeScreenState extends State<HomeScreen> {
         day,
         style: const TextStyle(
           fontWeight: FontWeight.bold,
-          color: Colors.grey,
+          color: AppColors.placeholder,
         ),
       )).toList(),
     );
@@ -332,7 +333,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
               SizedBox(width: 8),
-              Text('加载天气...', style: TextStyle(fontSize: 13, color: Colors.grey)),
+              Text('加载天气...', style: TextStyle(fontSize: 13, color: AppColors.placeholder)),
             ],
           ),
         ),
@@ -346,12 +347,12 @@ class _HomeScreenState extends State<HomeScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              const Icon(Icons.cloud_off, size: 28, color: Colors.grey),
+              const Icon(Icons.cloud_off, size: 28, color: AppColors.placeholder),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
                   _weatherData?.desc.isEmpty ?? true ? '天气数据加载失败' : _weatherData!.desc,
-                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                  style: const TextStyle(fontSize: 13, color: AppColors.placeholder),
                 ),
               ),
             ],
@@ -402,11 +403,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Expanded(
                           child: Text('${weather.city}  体感${weather.feelsLike}°C',
-                            style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                            style: const TextStyle(fontSize: 12, color: AppColors.placeholder)),
                         ),
                         if (weather.humidity.isNotEmpty || weather.windSpeed.isNotEmpty)
                           Text('湿度${weather.humidity}%  风速${weather.windSpeed}',
-                            style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                            style: const TextStyle(fontSize: 11, color: AppColors.placeholder)),
                       ],
                     ),
                   ],

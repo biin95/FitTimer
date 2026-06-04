@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../models/exercise_info.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_helpers.dart';
+import '../widgets/badge_number.dart';
 
 class ExerciseDetailScreen extends StatelessWidget {
   final ExerciseInfo exercise;
@@ -146,7 +149,7 @@ class ExerciseDetailScreen extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: _difficultyColor(exercise.difficulty).withValues(alpha: 0.15),
+            color: difficultyColor(exercise.difficulty).withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Text(
@@ -154,7 +157,7 @@ class ExerciseDetailScreen extends StatelessWidget {
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: _difficultyColor(exercise.difficulty),
+              color: difficultyColor(exercise.difficulty),
             ),
           ),
         ),
@@ -212,23 +215,10 @@ class ExerciseDetailScreen extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 24,
-                height: 24,
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Center(
-                  child: Text(
-                    '${i + 1}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+              BadgeNumber(
+                color: Theme.of(context).colorScheme.primary,
+                number: i + 1,
+                size: 24,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -252,7 +242,7 @@ class ExerciseDetailScreen extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.lightbulb_outline, size: 18, color: Colors.amber),
+              const Icon(Icons.lightbulb_outline, size: 18, color: AppColors.tip),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -267,16 +257,4 @@ class ExerciseDetailScreen extends StatelessWidget {
     );
   }
 
-  Color _difficultyColor(String difficulty) {
-    switch (difficulty) {
-      case 'beginner':
-        return Colors.green;
-      case 'intermediate':
-        return Colors.orange;
-      case 'advanced':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
 }

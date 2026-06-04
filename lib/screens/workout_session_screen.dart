@@ -2,6 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/workout_record.dart';
+import '../theme/app_colors.dart';
+import '../widgets/badge_number.dart';
+import '../widgets/delete_button.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/move_arrows.dart';
+import '../widgets/snackbar_helper.dart';
 import '../models/exercise_record.dart';
 import '../models/workout_template.dart';
 import '../models/template_exercise.dart';
@@ -332,22 +338,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
       await _loadOrCreateWorkout();
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('间歇训练已记录：$trainingName ${rounds}轮'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        showSuccessSnackBar(context, '间歇训练已记录：$trainingName ${rounds}轮');
       }
     } catch (e) {
       debugPrint('保存间歇训练记录失败: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('保存失败: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        showErrorSnackBar(context, '保存失败: $e');
       }
     }
   }
@@ -751,12 +747,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
   // --- Complete training ---
   Future<void> _completeTraining() async {
     if (_exercises.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('当前没有训练内容，请先添加训练动作'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+      showWarningSnackBar(context, '当前没有训练内容，请先添加训练动作');
       return;
     }
 
@@ -776,12 +767,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     await _saveWorkout(markCompleted: true);
     if (mounted) {
       HapticFeedback.heavyImpact();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('训练已完成！'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      showSuccessSnackBar(context, '训练已完成！');
       Navigator.of(context).pop();
     }
   }
@@ -915,23 +901,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                   child: Row(
                     children: [
                       // 序号
-                      Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: isInterval
-                              ? Colors.purple
-                              : isCardio
-                                  ? Colors.orange
-                                  : Theme.of(context).colorScheme.primary,
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${index + 1}',
-                            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                          ),
-                        ),
+                      BadgeNumber(
+                        color: isInterval
+                            ? AppColors.info
+                            : isCardio
+                                ? AppColors.warning
+                                : Theme.of(context).colorScheme.primary,
+                        number: index + 1,
                       ),
                       const SizedBox(width: 12),
                       // 动作名称和详情
@@ -946,43 +922,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                             if (isInterval)
                               Text(
                                 '间歇训练 ${ex.intervalRounds ?? 0}轮 · ${ex.durationMinutes ?? 0}分钟',
-                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                style: TextStyle(fontSize: 12, color: AppColors.subtitle),
                               )
                             else if (isCardio)
-                              Text('有氧运动', style: TextStyle(fontSize: 12, color: Colors.grey[600]))
+                              Text('有氧运动', style: TextStyle(fontSize: 12, color: AppColors.subtitle))
                             else if (ex.sets.isNotEmpty)
                               Text(
                                 '$completedSets/${ex.sets.length} 组 · ${ex.sets.first.targetReps}次'
                                 '${ex.sets.first.targetWeight > 0 ? ' @ ${ex.sets.first.targetWeight}kg' : ''}',
-                                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                style: TextStyle(fontSize: 12, color: AppColors.subtitle),
                               ),
                           ],
                         ),
                       ),
                       // ↑↓ 按钮
-                      Column(
-                        children: [
-                          SizedBox(
-                            width: 36,
-                            height: 36,
-                            child: IconButton(
-                              icon: Icon(Icons.arrow_upward, size: 20, color: isFirst ? Colors.grey[300] : null),
-                              onPressed: isFirst ? null : () => _moveExerciseUp(index),
-                              padding: EdgeInsets.zero,
-                              tooltip: '上移',
-                            ),
-                          ),
-                          SizedBox(
-                            width: 36,
-                            height: 36,
-                            child: IconButton(
-                              icon: Icon(Icons.arrow_downward, size: 20, color: isLast ? Colors.grey[300] : null),
-                              onPressed: isLast ? null : () => _moveExerciseDown(index),
-                              padding: EdgeInsets.zero,
-                              tooltip: '下移',
-                            ),
-                          ),
-                        ],
+                      MoveArrows(
+                        isFirst: isFirst,
+                        isLast: isLast,
+                        onMoveUp: () => _moveExerciseUp(index),
+                        onMoveDown: () => _moveExerciseDown(index),
                       ),
                     ],
                   ),
@@ -1062,21 +1020,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                   // Exercise list
                   Expanded(
                     child: _exercises.isEmpty
-                        ? GestureDetector(
+                        ? EmptyState(
+                            icon: Icons.add_circle_outline,
+                            message: '点击添加训练动作或套用模板',
                             onTap: _addExercise,
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.add_circle_outline,
-                                      size: 64,
-                                      color:
-                                          Theme.of(context).colorScheme.outline),
-                                  const SizedBox(height: 12),
-                                  const Text('点击添加训练动作或套用模板'),
-                                ],
-                              ),
-                            ),
                           )
                         : ListView.builder(
                             controller: _scrollController,
@@ -1209,22 +1156,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
             // Header
             Row(
               children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '${exerciseIndex + 1}',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ),
+                BadgeNumber(
+                  color: Theme.of(context).colorScheme.primary,
+                  number: exerciseIndex + 1,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1303,9 +1237,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                   },
                   tooltip: '加一组',
                 ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline,
-                      color: Colors.red, size: 20),
+                DeleteButton(
                   onPressed: () => _removeExercise(exerciseIndex),
                   tooltip: '删除动作',
                 ),
@@ -1387,25 +1319,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
             // Header row: icon + name + delete
             Row(
               children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: Colors.orange,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: Text(
-                      '${exerciseIndex + 1}',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold),
-                    ),
-                  ),
+                BadgeNumber(
+                  color: AppColors.warning,
+                  number: exerciseIndex + 1,
                 ),
                 const SizedBox(width: 8),
-                const Icon(Icons.directions_run, size: 20, color: Colors.orange),
+                const Icon(Icons.directions_run, size: 20, color: AppColors.warning),
                 const SizedBox(width: 8),
                 Expanded(
                   child: exercise.name.isEmpty
@@ -1464,9 +1383,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                           ),
                         ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline,
-                      color: Colors.red, size: 20),
+                DeleteButton(
                   onPressed: () => _removeExercise(exerciseIndex),
                   tooltip: '删除动作',
                 ),
@@ -1570,25 +1487,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: Colors.purple,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Center(
-                child: Text(
-                  '${exerciseIndex + 1}',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold),
-                ),
-              ),
+            BadgeNumber(
+              color: AppColors.info,
+              number: exerciseIndex + 1,
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.timer, size: 20, color: Colors.purple),
+            const Icon(Icons.timer, size: 20, color: AppColors.info),
             const SizedBox(width: 8),
             Expanded(
               child: Column(
@@ -1601,14 +1505,12 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                   ),
                   Text(
                     '${rounds}轮 · ${duration}分钟',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 12, color: AppColors.subtitle),
                   ),
                 ],
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline,
-                  color: Colors.red, size: 20),
+            DeleteButton(
               onPressed: () => _removeExercise(exerciseIndex),
               tooltip: '删除',
             ),
@@ -1677,7 +1579,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
             ),
             if (exercise.sets.length > 1)
               IconButton(
-                icon: const Icon(Icons.close, size: 16, color: Colors.red),
+                icon: const Icon(Icons.close, size: 16, color: AppColors.danger),
                 onPressed: () => _removeSet(exerciseIndex, setIndex),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),

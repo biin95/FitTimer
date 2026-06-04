@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/interval_segment.dart';
+import '../theme/app_colors.dart';
 import '../services/interval_timer_service.dart';
 import '../services/sound_service.dart';
 import '../services/notification_service.dart';
@@ -193,7 +194,7 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
               final result = _buildResult(completed: false);
               Navigator.of(context).pop(result);
             },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
             child: const Text('结束训练'),
           ),
         ],
@@ -266,8 +267,8 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
       width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
       color: isExercise
-          ? Colors.orange.withValues(alpha: 0.2)
-          : Colors.green.withValues(alpha: 0.2),
+          ? AppColors.exerciseSegment.withValues(alpha: 0.2)
+          : AppColors.restSegment.withValues(alpha: 0.2),
       child: Column(
         children: [
           Text(
@@ -275,13 +276,13 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
-              color: isExercise ? Colors.orange : Colors.green,
+              color: isExercise ? AppColors.exerciseSegment : AppColors.restSegment,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             '第 ${_timerService.currentSegmentIndex + 1} 段 / 共 ${_timerService.totalSegments} 段',
-            style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+            style: TextStyle(fontSize: 16, color: AppColors.subtitle),
           ),
         ],
       ),
@@ -301,7 +302,7 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
               fontWeight: FontWeight.bold,
               fontFamily: 'monospace',
               color: _timerService.remaining <= 5
-                  ? Colors.red
+                  ? AppColors.danger
                   : Theme.of(context).colorScheme.primary,
             ),
           ),
@@ -314,11 +315,11 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
               value: _timerService.progress,
               minHeight: 8,
               borderRadius: BorderRadius.circular(4),
-              backgroundColor: Colors.grey[300],
+              backgroundColor: AppColors.disabled,
               valueColor: AlwaysStoppedAnimation<Color>(
                 _timerService.currentSegment.isExercise
-                    ? Colors.orange
-                    : Colors.green,
+                    ? AppColors.exerciseSegment
+                    : AppColors.restSegment,
               ),
             ),
           ),
@@ -370,12 +371,12 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
                 Icon(
                   nextSegment.isExercise ? Icons.directions_run : Icons.hotel,
                   size: 20,
-                  color: Colors.grey[600],
+                  color: AppColors.subtitle,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   _timerService.nextSegmentDescription,
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  style: TextStyle(fontSize: 14, color: AppColors.subtitle),
                 ),
               ],
             ),
@@ -397,8 +398,8 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
               icon: const Icon(Icons.skip_next),
               label: const Text('跳过'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.white,
+                backgroundColor: AppColors.exerciseSegment,
+                foregroundColor: AppColors.onColoredBadge,
               ),
             ),
 
@@ -427,8 +428,8 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
               icon: const Icon(Icons.stop),
               label: const Text('停止'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.white,
+                backgroundColor: AppColors.danger,
+                foregroundColor: AppColors.onColoredBadge,
               ),
             ),
           ],

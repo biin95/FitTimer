@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../data/exercise_catalog.dart';
 import '../models/exercise_info.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_helpers.dart';
 import 'exercise_detail_screen.dart';
 
 class ExerciseCatalogScreen extends StatefulWidget {
@@ -74,7 +76,7 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
                     size: 22,
                     color: isSelected
                         ? Theme.of(context).colorScheme.primary
-                        : Colors.grey.shade600,
+                        : AppColors.subtitle,
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -97,7 +99,7 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
                               .colorScheme
                               .onPrimaryContainer
                               .withValues(alpha: 0.7)
-                          : Colors.grey,
+                          : AppColors.placeholder,
                     ),
                   ),
                 ],
@@ -159,14 +161,14 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
       trailing: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: _difficultyColor(ex.difficulty).withValues(alpha: 0.12),
+          color: difficultyColor(ex.difficulty).withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(8),
         ),
         child: Text(
           ex.difficultyLabel,
           style: TextStyle(
             fontSize: 11,
-            color: _difficultyColor(ex.difficulty),
+            color: difficultyColor(ex.difficulty),
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -202,16 +204,4 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
     }
   }
 
-  Color _difficultyColor(String difficulty) {
-    switch (difficulty) {
-      case 'beginner':
-        return Colors.green;
-      case 'intermediate':
-        return Colors.orange;
-      case 'advanced':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
 }

@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/interval_segment.dart';
+import '../theme/app_colors.dart';
+import '../widgets/delete_button.dart';
+import '../widgets/empty_state.dart';
+import '../widgets/move_arrows.dart';
 import 'interval_training_screen.dart';
 
 class IntervalConfigScreen extends StatefulWidget {
@@ -188,7 +192,7 @@ class _IntervalConfigScreenState extends State<IntervalConfigScreen> {
                     const SizedBox(width: 12),
                     Text(
                       '轮',
-                      style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                      style: TextStyle(fontSize: 16, color: AppColors.subtitle),
                     ),
                   ],
                 ),
@@ -199,18 +203,9 @@ class _IntervalConfigScreenState extends State<IntervalConfigScreen> {
           // 段列表
           Expanded(
             child: _segments.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.timer_outlined, size: 64, color: Colors.grey[400]),
-                        const SizedBox(height: 12),
-                        Text(
-                          '点击下方按钮添加训练段',
-                          style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                        ),
-                      ],
-                    ),
+                ? const EmptyState(
+                    icon: Icons.timer_outlined,
+                    message: '点击下方按钮添加训练段',
                   )
                 : ListView.builder(
                     controller: _scrollController,
@@ -292,13 +287,13 @@ class _IntervalConfigScreenState extends State<IntervalConfigScreen> {
               width: 40,
               height: 40,
               decoration: BoxDecoration(
-                color: isExercise ? Colors.orange : Colors.green,
+                color: isExercise ? AppColors.exerciseSegment : AppColors.restSegment,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Center(
                 child: Icon(
                   isExercise ? Icons.directions_run : Icons.hotel,
-                  color: Colors.white,
+                  color: AppColors.onColoredBadge,
                   size: 20,
                 ),
               ),
@@ -317,7 +312,7 @@ class _IntervalConfigScreenState extends State<IntervalConfigScreen> {
                   const SizedBox(height: 4),
                   Text(
                     segment.formattedDuration,
-                    style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 14, color: AppColors.subtitle),
                   ),
                 ],
               ),
@@ -350,34 +345,19 @@ class _IntervalConfigScreenState extends State<IntervalConfigScreen> {
             // 操作按钮
             Column(
               children: [
-                SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: IconButton(
-                    icon: Icon(Icons.arrow_upward, size: 18, color: isFirst ? Colors.grey[300] : null),
-                    onPressed: isFirst ? null : () => _moveSegmentUp(index),
-                    padding: EdgeInsets.zero,
-                    tooltip: '上移',
-                  ),
+                MoveArrows(
+                  isFirst: isFirst,
+                  isLast: isLast,
+                  onMoveUp: () => _moveSegmentUp(index),
+                  onMoveDown: () => _moveSegmentDown(index),
                 ),
                 SizedBox(
                   width: 32,
                   height: 32,
-                  child: IconButton(
-                    icon: Icon(Icons.arrow_downward, size: 18, color: isLast ? Colors.grey[300] : null),
-                    onPressed: isLast ? null : () => _moveSegmentDown(index),
-                    padding: EdgeInsets.zero,
-                    tooltip: '下移',
-                  ),
-                ),
-                SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 18, color: Colors.red),
+                  child: DeleteButton(
                     onPressed: () => _removeSegment(index),
-                    padding: EdgeInsets.zero,
                     tooltip: '删除',
+                    size: 18,
                   ),
                 ),
               ],

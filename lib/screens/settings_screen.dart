@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import '../theme/app_colors.dart';
+import '../main.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/database_service.dart';
 import '../services/log_service.dart';
@@ -19,10 +22,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _autoStartNextSet = true;
   int _reminderDuration = 3;
   String _exportPath = '';
+  ThemeMode _themeMode = ThemeMode.system;
+  String _appVersion = '1.6.0'; // 默认值，异步加载后更新
+
   @override
   void initState() {
     super.initState();
     _loadSettings();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) {
+        setState(() {
+          _appVersion = '${info.version}+${info.buildNumber}';
+        });
+      }
+    } catch (_) {
+      // 保持默认值
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -32,12 +52,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final autoStart = await db.getSetting('auto_start_next_set');
     final reminder = await db.getSetting('rest_reminder_duration');
     final exportPath = await db.getSetting('export_path');
+    final darkMode = await db.getSetting('dark_mode');
     setState(() {
       _vibrationEnabled = vibration != 'false';
       _notificationEnabled = notification != 'false';
       _autoStartNextSet = autoStart != 'false';
       _reminderDuration = int.tryParse(reminder ?? '') ?? 3;
       _exportPath = exportPath ?? '';
+      switch (darkMode) {
+        case 'light':
+          _themeMode = ThemeMode.light;
+          break;
+        case 'dark':
+          _themeMode = ThemeMode.dark;
+          break;
+        default:
+          _themeMode = ThemeMode.system;
+      }
     });
   }
 
@@ -59,6 +90,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _toggleAutoStart(bool value) async {
     setState(() => _autoStartNextSet = value);
     await _setSetting('auto_start_next_set', value.toString());
+  }
+
+  String get _themeModeLabel {
+    switch (_themeMode) {
+      case ThemeMode.light:
+        return '始终浅色';
+      case ThemeMode.dark:
+        return '始终深色';
+      default:
+        return '跟随系统';
+    }
+  }
+
+  Future<void> _setThemeMode(ThemeMode mode) async {
+    setState(() => _themeMode = mode);
+    themeModeNotifier.value = mode;
+    String value;
+    switch (mode) {
+      case ThemeMode.light:
+        value = 'light';
+        break;
+      case ThemeMode.dark:
+        value = 'dark';
+        break;
+      default:
+        value = 'system';
+    }
+    await _setSetting('dark_mode', value);
   }
 
   Widget _buildExportPathTile() {
@@ -114,7 +173,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('确定导入', style: TextStyle(color: Colors.red)),
+            child: const Text('确定导入', style: TextStyle(color: AppColors.danger)),
           ),
         ],
       ),
@@ -160,6 +219,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          Text('显示设置', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.dark_mode_outlined),
+            title: const Text('深色模式'),
+            subtitle: Text(_themeModeLabel),
+            trailing: SegmentedButton<ThemeMode>(
+              segments: const [
+                ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.phone_android, size: 18)),
+                ButtonSegment(value: ThemeMode.light, icon: Icon(Icons.light_mode, size: 18)),
+                ButtonSegment(value: ThemeMode.dark, icon: Icon(Icons.dark_mode, size: 18)),
+              ],
+              selected: {_themeMode},
+              onSelectionChanged: (modes) => _setThemeMode(modes.first),
+              showSelectedIcon: false,
+              style: ButtonStyle(
+                visualDensity: VisualDensity.compact,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ),
+          ),
+          const Divider(height: 32),
           Text('提醒设置', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           SwitchListTile(
@@ -248,9 +329,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(height: 32),
           Text('关于', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
-          const ListTile(
-            title: Text('FitTimer'),
-            subtitle: Text('版本 1.2.3'),
+          ListTile(
+            title: const Text('FitTimer'),
+            subtitle: Text('版本 $_appVersion'),
           ),
         ],
       ),

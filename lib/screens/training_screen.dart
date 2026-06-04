@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 
 
 import '../main.dart';
+import '../theme/app_colors.dart';
+import '../widgets/badge_number.dart';
 import '../models/workout_record.dart';
 import '../models/exercise_record.dart';
 import '../models/workout_template.dart';
@@ -472,7 +474,7 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
             child: const Text('放弃'),
           ),
         ],
@@ -622,7 +624,7 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
                             _finishTraining();
                           },
                           style:
-                              TextButton.styleFrom(foregroundColor: Colors.orange),
+                              TextButton.styleFrom(foregroundColor: AppColors.warning),
                           child: const Text('结束训练'),
                         ),
                       ],
@@ -632,7 +634,7 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
           child: Text(
             '完成训练',
             style: TextStyle(
-              color: _allDone ? Colors.green : Colors.orange,
+              color: _allDone ? AppColors.success : AppColors.warning,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -747,29 +749,12 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
             Row(
               children: [
                 // Number badge
-                Container(
-                  width: 28,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: isDone
-                        ? Colors.green
-                        : isCurrentExercise
-                            ? Theme.of(context).colorScheme.primary
-                            : Colors.grey.shade400,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Center(
-                    child: isDone
-                        ? const Icon(Icons.check, size: 16, color: Colors.white)
-                        : Text(
-                            '${exIdx + 1}',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                  ),
+                BadgeNumber(
+                  color: isCurrentExercise
+                      ? Theme.of(context).colorScheme.primary
+                      : AppColors.futureItem,
+                  number: exIdx + 1,
+                  done: isDone,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -791,7 +776,7 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
                         ' · 休息${ex.restDuration}秒',
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey.shade600,
+                          color: AppColors.subtitle,
                         ),
                       ),
                     ],
@@ -803,7 +788,7 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: isDone ? Colors.green : null,
+                    color: isDone ? AppColors.success : null,
                   ),
                 ),
               ],
@@ -843,19 +828,19 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
                 ),
               ),
             ),
-            const Icon(Icons.check_circle, color: Colors.green, size: 18),
+            const Icon(Icons.check_circle, color: AppColors.success, size: 18),
             const SizedBox(width: 8),
             Text(
               '${s.actualWeight ?? 0}kg × ${s.actualReps ?? 0}次',
               style: TextStyle(
                 fontSize: 13,
-                color: Colors.grey.shade700,
+                color: AppColors.secondaryText,
               ),
             ),
             const Spacer(),
             Text(
               '✅',
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade400),
+              style: TextStyle(fontSize: 13, color: AppColors.futureItem),
             ),
           ],
         ),
@@ -943,7 +928,7 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
                 label: const Text('完成本组'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Theme.of(context).colorScheme.primary,
-                  foregroundColor: Colors.white,
+                  foregroundColor: AppColors.onColoredBadge,
                   padding: const EdgeInsets.symmetric(vertical: 10),
                 ),
               ),
@@ -964,15 +949,15 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
               '第 ${s.setNumber} 组',
               style: TextStyle(
                 fontSize: 13,
-                color: Colors.grey.shade400,
+                color: AppColors.futureItem,
               ),
             ),
           ),
-          Icon(Icons.radio_button_unchecked, size: 18, color: Colors.grey.shade300),
+          Icon(Icons.radio_button_unchecked, size: 18, color: AppColors.disabled),
           const SizedBox(width: 8),
           Text(
             '${s.targetWeight > 0 ? '${s.targetWeight}kg × ' : ''}${s.targetReps}次',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade400),
+            style: TextStyle(fontSize: 13, color: AppColors.futureItem),
           ),
         ],
       ),
@@ -991,7 +976,7 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
             color: Theme.of(context).colorScheme.primaryContainer,
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
+                color: Colors.black.withValues(alpha: 0.1), // shadow color - keep as is
                 blurRadius: 8,
                 offset: const Offset(0, -2),
               ),
@@ -1031,7 +1016,7 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
                         fontWeight: FontWeight.bold,
                         fontFamily: 'monospace',
                         color: _restTimer.remaining <= 5
-                            ? Colors.red
+                            ? AppColors.danger
                             : Theme.of(context)
                                 .colorScheme
                                 .onPrimaryContainer,

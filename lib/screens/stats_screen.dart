@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../services/database_service.dart';
 import '../models/workout_record.dart';
+import '../theme/app_colors.dart';
 
 class StatsScreen extends StatefulWidget {
   const StatsScreen({super.key});
@@ -443,7 +444,7 @@ class StatsScreenState extends State<StatsScreen> with SingleTickerProviderState
                 child: Center(
                   child: Text(
                     '请选择日期范围',
-                    style: theme.textTheme.bodyLarge?.copyWith(color: Colors.grey[500]),
+                    style: theme.textTheme.bodyLarge?.copyWith(color: AppColors.placeholder),
                   ),
                 ),
               ),
@@ -562,7 +563,7 @@ class StatsScreenState extends State<StatsScreen> with SingleTickerProviderState
           const SizedBox(height: 4),
           Text(
             '$label ($unit)',
-            style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+            style: theme.textTheme.bodySmall?.copyWith(color: AppColors.subtitle),
             textAlign: TextAlign.center,
           ),
         ],
@@ -615,7 +616,7 @@ class StatsScreenState extends State<StatsScreen> with SingleTickerProviderState
                             duration: const Duration(milliseconds: 400),
                             height: ratio * 100,
                             decoration: BoxDecoration(
-                              color: Colors.orange.withValues(alpha: 0.75),
+                              color: AppColors.chartBar.withValues(alpha: 0.75),
                               borderRadius: BorderRadius.circular(6),
                             ),
                           ),
@@ -624,7 +625,7 @@ class StatsScreenState extends State<StatsScreen> with SingleTickerProviderState
                             mc.label,
                             style: theme.textTheme.bodySmall?.copyWith(
                               fontSize: 10,
-                              color: Colors.grey[600],
+                              color: AppColors.subtitle,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -697,7 +698,7 @@ class StatsScreenState extends State<StatsScreen> with SingleTickerProviderState
                           Text(
                             '最大重量',
                             style: theme.textTheme.bodySmall?.copyWith(
-                              color: Colors.grey[500],
+                              color: AppColors.placeholder,
                             ),
                           ),
                         ],
