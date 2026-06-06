@@ -1,12 +1,13 @@
 package com.fittimer.fittimer
 
 import android.app.AlarmManager
-import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.MediaPlayer
 import android.media.RingtoneManager
+import android.media.ToneGenerator
 import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
@@ -157,6 +158,71 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
+        // 原生音效播放（使用系统闹钟铃声，音量最大，不受音频焦点限制）
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SOUND_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "playAlert" -> {
+                        Thread {
+                            var player: MediaPlayer? = null
+                            try {
+                                val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                                // 把闹钟音量拉到最大
+                                val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+                                audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0)
+
+                                // 获取系统闹钟铃声 URI
+                                var alarmUri: Uri? = RingtoneManager.getActualDefaultRingtoneUri(
+                                    applicationContext, RingtoneManager.TYPE_ALARM
+                                )
+                                // 没有设置闹钟则用通知铃声
+                                if (alarmUri == null) {
+                                    alarmUri = RingtoneManager.getActualDefaultRingtoneUri(
+                                        applicationContext, RingtoneManager.TYPE_NOTIFICATION
+                                    )
+                                }
+                                // 还是没有则用系统默认提示音
+                                if (alarmUri == null) {
+                                    alarmUri = Settings.System.DEFAULT_ALARM_ALERT_URI
+                                }
+
+                                if (alarmUri != null) {
+                                    player = MediaPlayer()
+                                    player.setDataSource(applicationContext, alarmUri)
+                                    player.setAudioStreamType(AudioManager.STREAM_ALARM)
+                                    player.isLooping = false
+                                    player.prepare()
+                                    player.start()
+                                    // 播放 3 秒后停止
+                                    Thread.sleep(3000)
+                                    player.stop()
+                                }
+                            } catch (e: Exception) {
+                                // fallback: ToneGenerator
+                                try {
+                                    player?.release()
+                                    player = null
+                                    val toneGen = ToneGenerator(AudioManager.STREAM_ALARM, 100)
+                                    for (i in 0 until 10) {
+                                        toneGen.startTone(ToneGenerator.TONE_SUP_CONGESTION, 250)
+                                        Thread.sleep(300)
+                                    }
+                                    toneGen.release()
+                                } catch (_: Exception) {}
+                            } finally {
+                                try { player?.release() } catch (_: Exception) {}
+                            }
+                            result.success(null)
+                        }.start()
+                    }
+                    "stopAlert" -> {
+                        // 预留：停止正在播放的音效
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         // 精确闹钟权限检测和跳转
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, EXACT_ALARM_CHANNEL)
             .setMethodCallHandler { call, result ->
@@ -185,27 +251,6 @@ class MainActivity : FlutterActivity() {
                             result.success(null)
                         } catch (e: Exception) {
                             result.error("OPEN_FAILED", e.message, null)
-                        }
-                    }
-                    else -> result.notImplemented()
-                }
-            }
-
-        // 音效播放
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SOUND_CHANNEL)
-            .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "playAlert" -> {
-                        try {
-                            val notification: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-                            val ringtone = RingtoneManager.getRingtone(applicationContext, notification)
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                                ringtone?.volume = 1.0f
-                            }
-                            ringtone?.play()
-                            result.success(null)
-                        } catch (e: Exception) {
-                            result.error("SOUND_FAILED", e.message, null)
                         }
                     }
                     else -> result.notImplemented()

@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'dart:convert';
 import 'dart:io';
 
 import '../models/workout_record.dart';
@@ -132,6 +133,8 @@ class DatabaseService {
         speed REAL,
         incline REAL,
         is_completed INTEGER DEFAULT 0,
+        interval_id INTEGER,
+        interval_rounds INTEGER,
         FOREIGN KEY (workout_id) REFERENCES workout_records(id) ON DELETE CASCADE
       )
     ''');
@@ -607,7 +610,12 @@ class DatabaseService {
       // Import exercise records
       if (data['exercise_records'] != null) {
         for (var record in data['exercise_records'] as List) {
-          await txn.insert('exercise_records', Map<String, dynamic>.from(record as Map));
+          final map = Map<String, dynamic>.from(record as Map);
+          // 兼容旧版备份：没有 is_completed 字段时，根据 actual_reps 推断
+          if (!map.containsKey('is_completed') || map['is_completed'] == null) {
+            map['is_completed'] = map['actual_reps'] != null ? 1 : 0;
+          }
+          await txn.insert('exercise_records', map);
         }
       }
 
@@ -646,6 +654,72 @@ class DatabaseService {
         }
       }
     });
+  }
+
+  // ==================== Auto Backup ====================
+
+  /// 自动备份到外部存储（/sdcard/Download/FitTimer/）
+  /// 比较记录数决定是否需要更新备份
+  Future<void> autoBackup() async {
+    try {
+      final db = await database;
+
+      // 统计当前记录数
+      final workoutCount = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM workout_records'),
+      ) ?? 0;
+      final exerciseCount = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM exercise_records'),
+      ) ?? 0;
+
+      // 没有记录就不备份
+      if (workoutCount == 0) return;
+
+      // 检查上次备份的记录数
+      final backupDir = Directory('/storage/emulated/0/Download/FitTimer');
+      if (!await backupDir.exists()) {
+        await backupDir.create(recursive: true);
+      }
+      final metaFile = File('${backupDir.path}/.backup_meta');
+      int lastWorkoutCount = 0;
+      int lastExerciseCount = 0;
+      if (await metaFile.exists()) {
+        try {
+          final meta = await metaFile.readAsString();
+          final parts = meta.split(',');
+          lastWorkoutCount = int.tryParse(parts[0]) ?? 0;
+          lastExerciseCount = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
+        } catch (_) {}
+      }
+
+      // 记录数没变化就跳过
+      if (workoutCount == lastWorkoutCount && exerciseCount == lastExerciseCount) return;
+
+      // 导出数据
+      final data = await exportAllData();
+      final jsonStr = const JsonEncoder.withIndent('  ').convert(data);
+      final now = DateTime.now();
+      final fileName = 'fittimer_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.json';
+      final file = File('${backupDir.path}/$fileName');
+      await file.writeAsString(jsonStr, encoding: utf8);
+
+      // 更新 meta
+      await metaFile.writeAsString('$workoutCount,$exerciseCount');
+
+      // 清理旧备份，只保留最新 3 个
+      final backups = await backupDir
+          .list()
+          .where((f) => f.path.contains('fittimer_backup_') && f.path.endsWith('.json'))
+          .toList();
+      if (backups.length > 3) {
+        backups.sort((a, b) => a.path.compareTo(b.path));
+        for (int i = 0; i < backups.length - 3; i++) {
+          await backups[i].delete();
+        }
+      }
+    } catch (e) {
+      // 自动备份失败不影响 app 正常运行
+    }
   }
 
   // ==================== Utility ====================

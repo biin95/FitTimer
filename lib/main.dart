@@ -17,10 +17,13 @@ void main() async {
   currentQuote = fitnessQuotes[Random().nextInt(fitnessQuotes.length)];
 
   // Initialize database
-  await DatabaseService().database;
+  final db = DatabaseService();
+  await db.database;
+
+  // 自动备份（后台执行，不阻塞启动）
+  db.autoBackup().catchError((_) {});
 
   // Load saved theme mode
-  final db = DatabaseService();
   final saved = await db.getSetting('dark_mode');
   switch (saved) {
     case 'light':

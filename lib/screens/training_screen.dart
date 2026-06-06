@@ -13,6 +13,8 @@ import '../models/template_exercise.dart';
 import '../services/database_service.dart';
 import '../services/timer_service.dart';
 import '../services/notification_service.dart';
+import '../services/sound_service.dart';
+import '../widgets/countdown_overlay.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal data models for the training session
@@ -119,6 +121,7 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
   final DatabaseService _db = DatabaseService();
   final TimerService _restTimer = TimerService();
   final NotificationService _notif = NotificationService();
+  final SoundService _soundService = SoundService();
 
   // ── Session state ──
   late List<_TrainingExercise> _exercises;
@@ -324,6 +327,7 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
 
     // Alert: vibration + sound
     _triggerRestAlert();
+    _soundService.playEndAlert();
 
     // Notification: rest complete reminder
     final exName = _allDone ? '训练' : _exercises[_currentExerciseIndex].name;
@@ -555,30 +559,41 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
       },
       child: Scaffold(
         appBar: _buildAppBar(),
-        body: Column(
+        body: Stack(
           children: [
-            // Motivational quote
-            _buildQuoteBanner(),
+            Column(
+              children: [
+                // Motivational quote
+                _buildQuoteBanner(),
 
-            // Sport type selector
-            _buildSportTypeSelector(),
+                // Sport type selector
+                _buildSportTypeSelector(),
 
-            // Auto-start toggle
-            _buildAutoStartToggle(),
+                // Auto-start toggle
+                _buildAutoStartToggle(),
 
-            // Exercise list (scrollable)
-            Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                itemCount: _exercises.length,
-                itemBuilder: (context, index) =>
-                    _buildExerciseCard(_exercises[index], index),
-              ),
+                // Exercise list (scrollable)
+                Expanded(
+                  child: ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemCount: _exercises.length,
+                    itemBuilder: (context, index) =>
+                        _buildExerciseCard(_exercises[index], index),
+                  ),
+                ),
+
+                // Rest timer (shown when resting)
+                if (_isResting) _buildRestTimerBar(),
+              ],
             ),
 
-            // Rest timer (shown when resting)
-            if (_isResting) _buildRestTimerBar(),
+            // 最后 10 秒全屏遮罩
+            CountdownOverlay(
+              remaining: _restTimer.remaining,
+              total: _restDurationForCurrentSet,
+              visible: _isResting && _restTimer.remaining <= 10 && _restTimer.remaining > 0,
+            ),
           ],
         ),
       ),

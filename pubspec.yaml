@@ -1,7 +1,7 @@
 name: fittimer
 description: 健身训练记录与组间计时器
 publish_to: 'none'
-version: 1.7.0+10
+version: 1.7.5+11
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -20,6 +20,7 @@ dependencies:
   http: ^1.2.0
   shared_preferences: ^2.2.2
   package_info_plus: ^9.0.1
+  just_audio: ^0.9.43
 
 dev_dependencies:
   flutter_test:
@@ -38,3 +39,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/exercises/
+    - assets/sounds/

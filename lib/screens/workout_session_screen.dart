@@ -8,12 +8,14 @@ import '../widgets/delete_button.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/move_arrows.dart';
 import '../widgets/snackbar_helper.dart';
+import '../widgets/countdown_overlay.dart';
 import '../models/exercise_record.dart';
 import '../models/workout_template.dart';
 import '../models/template_exercise.dart';
 import '../services/database_service.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
+import '../services/sound_service.dart';
 import 'interval_config_screen.dart';
 
 class WorkoutSessionScreen extends StatefulWidget {
@@ -51,6 +53,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
 
   // Notification service
   final NotificationService _notif = NotificationService();
+  final SoundService _soundService = SoundService();
 
   // Highlight state
   int? _highlightedExerciseIndex;
@@ -511,6 +514,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
         });
         // 清除倒计时通知（RestAlarmReceiver 也会清除，这里双保险）
         _notif.cancelRestNotification();
+        // 播放结束提示音
+        _soundService.playEndAlert();
         // 不调用 _startReminder！
         // AlarmManager 闹钟会自动触发 RestAlarmReceiver 处理震动和通知
         log.log('VIBRATE', '前台倒计时结束，等待 RestAlarmReceiver 处理');
@@ -1012,34 +1017,45 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
             ? const Center(child: CircularProgressIndicator())
             : _isSorting
                 ? _buildSortView()
-                : Column(
+                : Stack(
                 children: [
-                  // Rest timer bar
-                  _buildRestTimerBar(),
+                  Column(
+                    children: [
+                      // Rest timer bar
+                      _buildRestTimerBar(),
 
-                  // Exercise list
-                  Expanded(
-                    child: _exercises.isEmpty
-                        ? EmptyState(
-                            icon: Icons.add_circle_outline,
-                            message: '点击添加训练动作或套用模板',
-                            onTap: _addExercise,
-                          )
-                        : ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.all(16),
-                            itemCount: _exercises.length,
-                            itemBuilder: (_, i) {
-                              final ex = _exercises[i];
-                              if (ex.exerciseType == 'interval') return _buildIntervalCard(i);
-                              if (ex.exerciseType == 'cardio') return _buildCardioCard(i);
-                              return _buildExerciseCard(i);
-                            },
-                          ),
+                      // Exercise list
+                      Expanded(
+                        child: _exercises.isEmpty
+                            ? EmptyState(
+                                icon: Icons.add_circle_outline,
+                                message: '点击添加训练动作或套用模板',
+                                onTap: _addExercise,
+                              )
+                            : ListView.builder(
+                                controller: _scrollController,
+                                padding: const EdgeInsets.all(16),
+                                itemCount: _exercises.length,
+                                itemBuilder: (_, i) {
+                                  final ex = _exercises[i];
+                                  if (ex.exerciseType == 'interval') return _buildIntervalCard(i);
+                                  if (ex.exerciseType == 'cardio') return _buildCardioCard(i);
+                                  return _buildExerciseCard(i);
+                                },
+                              ),
+                      ),
+
+                      // Bottom buttons
+                      if (!_isSorting) _buildBottomBar(),
+                    ],
                   ),
 
-                  // Bottom buttons
-                  if (!_isSorting) _buildBottomBar(),
+                  // 最后 10 秒全屏遮罩
+                  CountdownOverlay(
+                    remaining: _restRemaining,
+                    total: _restTotal,
+                    visible: _restRemaining <= 10 && _restRemaining > 0,
+                  ),
                 ],
               ),
         floatingActionButton: (_exercises.isEmpty || _draftSaved || _isSorting)

@@ -4,6 +4,8 @@ import '../theme/app_colors.dart';
 import '../services/interval_timer_service.dart';
 import '../services/sound_service.dart';
 import '../services/notification_service.dart';
+import '../services/log_service.dart';
+import '../widgets/countdown_overlay.dart';
 
 class IntervalTrainingScreen extends StatefulWidget {
   final String trainingName;
@@ -29,6 +31,8 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
   bool _isCompleted = false;
   int _completedRounds = 0;
   DateTime? _trainingStartTime;
+  bool _userPaused = false; // 用户手动暂停标志
+  bool _isAppActive = true; // App 是否在前台（防止浮窗切换时 Semantics 自动触发 skip）
 
   @override
   void initState() {
@@ -61,13 +65,15 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
   void _onSegmentComplete() {
     if (!mounted) return;
 
+    log.log('IntervalTraining', '段完成: segment=${_timerService.currentSegmentIndex} round=${_timerService.currentRound}/${_timerService.totalRounds}');
+
     // 判断是否是最后一轮最后一个段
     final isLastSegment = _timerService.currentSegmentIndex >= _timerService.totalSegments - 1;
     final isLastRound = _timerService.currentRound >= _timerService.totalRounds;
 
     // 最后一轮最后一个动作不播提示音
     if (!(isLastSegment && isLastRound)) {
-      _soundService.playSegmentChange();
+      _soundService.playEndAlert();
     }
 
     // 显示通知
@@ -86,12 +92,14 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
   }
 
   void _onTrainingComplete() {
+    log.log('IntervalTraining', '训练完成!');
+
     setState(() {
       _isCompleted = true;
     });
 
     // 播放完成音效
-    _soundService.playTrainingComplete();
+    _soundService.playEndAlert();
 
     // 清除通知
     _notif.cancelAll();
@@ -165,13 +173,18 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
 
   void _togglePause() {
     if (_timerService.isPaused) {
+      _userPaused = false;
       _timerService.resume();
+      log.log('IntervalTraining', '用户手动恢复');
     } else {
+      _userPaused = true;
       _timerService.pause();
+      log.log('IntervalTraining', '用户手动暂停');
     }
   }
 
   void _skipSegment() {
+    if (!_isAppActive) return; // 防止浮窗切换时 Semantics 自动触发
     _timerService.skipSegment();
   }
 
@@ -204,8 +217,18 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      _timerService.syncOnResume();
+    log.log('LC', '$state | running=${_timerService.isRunning} paused=${_timerService.isPaused} rem=${_timerService.remaining} userPaused=$_userPaused');
+
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _isAppActive = false; // 后台，禁止 skip
+    } else if (state == AppLifecycleState.resumed) {
+      _isAppActive = true;
+      if (_timerService.isRunning && !_timerService.isPaused) {
+        _timerService.syncOnResume();
+      }
+      if (_isCompleted && mounted) {
+        _showCompleteDialog();
+      }
     }
   }
 
@@ -235,24 +258,38 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
             tooltip: '结束训练',
           ),
         ),
-        body: Column(
+        body: Stack(
           children: [
-            // 当前段信息
-            _buildCurrentSegmentInfo(),
+            Column(
+              children: [
+                // 当前段信息
+                _buildCurrentSegmentInfo(),
 
-            // 倒计时显示
-            Expanded(
-              child: _buildCountdownDisplay(),
+                // 倒计时显示
+                Expanded(
+                  child: _buildCountdownDisplay(),
+                ),
+
+                // 进度信息
+                _buildProgressInfo(),
+
+                // 下一段预览
+                _buildNextSegmentPreview(),
+
+                // 控制按钮
+                _buildControlButtons(),
+              ],
             ),
 
-            // 进度信息
-            _buildProgressInfo(),
-
-            // 下一段预览
-            _buildNextSegmentPreview(),
-
-            // 控制按钮
-            _buildControlButtons(),
+            // 最后 10 秒全屏遮罩
+            CountdownOverlay(
+              remaining: _timerService.remaining,
+              total: _timerService.currentSegment.durationSec,
+              visible: _timerService.remaining <= 10 && _timerService.remaining > 0 && !_isCompleted,
+              accentColor: _timerService.currentSegment.isExercise
+                  ? AppColors.exerciseSegment
+                  : AppColors.restSegment,
+            ),
           ],
         ),
       ),
