@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/interval_segment.dart';
 import '../theme/app_colors.dart';
+import '../utils/page_transitions.dart';
 import '../widgets/delete_button.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/move_arrows.dart';
@@ -130,13 +131,12 @@ class _IntervalConfigScreenState extends State<IntervalConfigScreen> {
       return entry.value.toSegment(sortOrder: entry.key);
     }).toList();
 
-    final result = await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) => IntervalTrainingScreen(
-          trainingName: name,
-          segments: segments,
-          rounds: rounds,
-        ),
+    final result = await pushSlideFade(
+      context,
+      IntervalTrainingScreen(
+        trainingName: name,
+        segments: segments,
+        rounds: rounds,
       ),
     );
 

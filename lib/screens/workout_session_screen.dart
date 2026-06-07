@@ -4,11 +4,14 @@ import 'package:flutter/services.dart';
 import '../models/workout_record.dart';
 import '../theme/app_colors.dart';
 import '../widgets/badge_number.dart';
+import '../widgets/celebration_overlay.dart';
 import '../widgets/delete_button.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/move_arrows.dart';
 import '../widgets/snackbar_helper.dart';
 import '../widgets/countdown_overlay.dart';
+import '../utils/page_transitions.dart';
+import '../utils/stagger_animation.dart';
 import '../models/exercise_record.dart';
 import '../models/workout_template.dart';
 import '../models/template_exercise.dart';
@@ -40,6 +43,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
   bool _hasUnsavedChanges = false;
   bool _draftSaved = false;
   bool _isSorting = false; // 排序模式
+  bool _showCelebration = false; // 庆祝动画
 
   // Rest timer
   int _restRemaining = 0;
@@ -277,11 +281,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
 
   Future<void> _addIntervalTraining() async {
     // 导航到间歇训练配置页面，等待训练结果
-    final result = await Navigator.of(context).push<Map<String, dynamic>>(
-      MaterialPageRoute(
-        builder: (context) => const IntervalConfigScreen(),
-      ),
-    );
+    final result = await pushSlideFade<Map<String, dynamic>>(context, const IntervalConfigScreen());
 
     // 训练完成，保存记录
     if (result != null && mounted) {
@@ -772,8 +772,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     await _saveWorkout(markCompleted: true);
     if (mounted) {
       HapticFeedback.heavyImpact();
-      showSuccessSnackBar(context, '训练已完成！');
-      Navigator.of(context).pop();
+      setState(() => _showCelebration = true);
     }
   }
 
@@ -1038,9 +1037,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                                 itemCount: _exercises.length,
                                 itemBuilder: (_, i) {
                                   final ex = _exercises[i];
-                                  if (ex.exerciseType == 'interval') return _buildIntervalCard(i);
-                                  if (ex.exerciseType == 'cardio') return _buildCardioCard(i);
-                                  return _buildExerciseCard(i);
+                                  Widget card;
+                                  if (ex.exerciseType == 'interval') {
+                                    card = _buildIntervalCard(i);
+                                  } else if (ex.exerciseType == 'cardio') {
+                                    card = _buildCardioCard(i);
+                                  } else {
+                                    card = _buildExerciseCard(i);
+                                  }
+                                  return StaggerItem(index: i, child: card);
                                 },
                               ),
                       ),
@@ -1054,6 +1059,15 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                   CountdownOverlay(
                     remaining: _restRemaining,
                     visible: _restRemaining <= 10 && _restRemaining > 0,
+                  ),
+
+                  // 训练完成庆祝动画
+                  CelebrationOverlay(
+                    visible: _showCelebration,
+                    onDismiss: () {
+                      setState(() => _showCelebration = false);
+                      Navigator.of(context).pop();
+                    },
                   ),
                 ],
               ),
@@ -1600,9 +1614,16 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                 constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               ),
             if (s.isCompleted)
-              Icon(Icons.check_circle,
-                  size: 16,
-                  color: Theme.of(context).colorScheme.primary),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                transitionBuilder: (child, animation) {
+                  return ScaleTransition(scale: animation, child: child);
+                },
+                child: Icon(Icons.check_circle,
+                    key: const ValueKey('checked'),
+                    size: 16,
+                    color: Theme.of(context).colorScheme.primary),
+              ),
           ],
         ),
       ),

@@ -6,6 +6,7 @@ import '../services/sound_service.dart';
 import '../services/notification_service.dart';
 import '../services/log_service.dart';
 import '../widgets/countdown_overlay.dart';
+import '../widgets/celebration_overlay.dart';
 
 class IntervalTrainingScreen extends StatefulWidget {
   final String trainingName;
@@ -29,6 +30,7 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
   final NotificationService _notif = NotificationService();
 
   bool _isCompleted = false;
+  bool _showCelebration = false;
   int _completedRounds = 0;
   DateTime? _trainingStartTime;
   bool _userPaused = false; // 用户手动暂停标志
@@ -96,6 +98,7 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
 
     setState(() {
       _isCompleted = true;
+      _showCelebration = true;
     });
 
     // 播放完成音效
@@ -103,9 +106,6 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
 
     // 清除通知
     _notif.cancelAll();
-
-    // 显示完成对话框
-    _showCompleteDialog();
   }
 
   /// 构建返回给上一级的结果数据
@@ -132,37 +132,6 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
       'startedAt': _trainingStartTime?.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch,
       'completedAt': DateTime.now().millisecondsSinceEpoch,
     };
-  }
-
-  void _showCompleteDialog() {
-    final result = _buildResult(completed: true);
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('🎉 训练完成！'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('训练名称: ${widget.trainingName}'),
-            const SizedBox(height: 8),
-            Text('完成轮数: ${widget.rounds} 轮'),
-            const SizedBox(height: 8),
-            Text('总时长: ${_formatDuration(result['totalDuration'] as int)}'),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              Navigator.of(context).pop(result);
-            },
-            child: const Text('返回'),
-          ),
-        ],
-      ),
-    );
   }
 
   String _formatDuration(int totalSeconds) {
@@ -227,7 +196,7 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
         _timerService.syncOnResume();
       }
       if (_isCompleted && mounted) {
-        _showCompleteDialog();
+        setState(() => _showCelebration = true);
       }
     }
   }
@@ -288,6 +257,16 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
               accentColor: _timerService.currentSegment.isExercise
                   ? AppColors.exerciseSegment
                   : AppColors.restSegment,
+            ),
+
+            // 训练完成庆祝动画
+            CelebrationOverlay(
+              visible: _showCelebration,
+              onDismiss: () {
+                setState(() => _showCelebration = false);
+                final result = _buildResult(completed: true);
+                Navigator.of(context).pop(result);
+              },
             ),
           ],
         ),

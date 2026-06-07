@@ -3,6 +3,8 @@ import '../data/exercise_catalog.dart';
 import '../models/exercise_info.dart';
 import '../theme/app_colors.dart';
 import '../theme/app_helpers.dart';
+import '../utils/page_transitions.dart';
+import '../utils/stagger_animation.dart';
 import 'exercise_detail_screen.dart';
 
 class ExerciseCatalogScreen extends StatefulWidget {
@@ -119,7 +121,10 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
       itemCount: exercises.length,
       itemBuilder: (context, index) {
         final ex = exercises[index];
-        return _buildExerciseTile(ex);
+        return StaggerItem(
+          index: index,
+          child: _buildExerciseTile(ex),
+        );
       },
     );
   }
@@ -174,11 +179,7 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
         ),
       ),
       onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ExerciseDetailScreen(exercise: ex),
-          ),
-        );
+        pushSlideFade(context, ExerciseDetailScreen(exercise: ex));
       },
     );
   }

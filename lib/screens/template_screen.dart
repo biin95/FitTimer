@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../models/workout_template.dart';
 import '../services/database_service.dart';
 import '../theme/app_colors.dart';
+import '../utils/page_transitions.dart';
+import '../utils/stagger_animation.dart';
 import '../widgets/empty_state.dart';
 import 'template_edit_screen.dart';
 
@@ -90,20 +92,14 @@ class _TemplateScreenState extends State<TemplateScreen> {
   }
 
   Future<void> _navigateToCreate() async {
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const TemplateEditScreen()),
-    );
+    final result = await pushSlideFade<bool>(context, const TemplateEditScreen());
     if (result == true) {
       _loadTemplates();
     }
   }
 
   Future<void> _navigateToEdit(WorkoutTemplate template) async {
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(
-        builder: (_) => TemplateEditScreen(template: template),
-      ),
-    );
+    final result = await pushSlideFade<bool>(context, TemplateEditScreen(template: template));
     if (result == true) {
       _loadTemplates();
     }
@@ -143,12 +139,15 @@ class _TemplateScreenState extends State<TemplateScreen> {
       itemBuilder: (context, index) {
         final template = _templates[index];
         final extraData = template.id != null ? _templateData[template.id!] : null;
-        return _TemplateCard(
-          template: template,
-          exerciseCount: extraData?.exerciseCount ?? 0,
-          hasCardio: extraData?.hasCardio ?? false,
-          onTap: () => _navigateToEdit(template),
-          onDelete: () => _deleteTemplate(template),
+        return StaggerItem(
+          index: index,
+          child: _TemplateCard(
+            template: template,
+            exerciseCount: extraData?.exerciseCount ?? 0,
+            hasCardio: extraData?.hasCardio ?? false,
+            onTap: () => _navigateToEdit(template),
+            onDelete: () => _deleteTemplate(template),
+          ),
         );
       },
     );

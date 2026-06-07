@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import '../main.dart';
 import '../theme/app_colors.dart';
 import '../widgets/badge_number.dart';
+import '../widgets/celebration_overlay.dart';
+import '../utils/stagger_animation.dart';
 import '../models/workout_record.dart';
 import '../models/exercise_record.dart';
 import '../models/workout_template.dart';
@@ -116,7 +118,7 @@ class ManualExercise {
   });
 }
 
-class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObserver {
+class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObserver, TickerProviderStateMixin {
   // ── Services ──
   final DatabaseService _db = DatabaseService();
   final TimerService _restTimer = TimerService();
@@ -129,6 +131,9 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
   WorkoutRecord? _workoutRecord;
   bool _isInitializing = true;
   bool _autoStartNextSet = true;
+
+  // ── Celebration state ──
+  bool _showCelebration = false;
 
   // ── Rest timer UI ──
   bool _isResting = false;
@@ -358,23 +363,8 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
   // ───────────────────────────────────────────────────────────────────────────
 
   void _showCompletePrompt() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        title: const Text('🎉 训练完成！'),
-        content: const Text('所有组都已完成，点击确认结束本次训练。'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(ctx).pop();
-              _finishTraining();
-            },
-            child: const Text('确认完成'),
-          ),
-        ],
-      ),
-    );
+    setState(() => _showCelebration = true);
+    _finishTraining();
   }
 
   Future<void> _finishTraining() async {
@@ -407,35 +397,47 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
       }
     }
 
-    // Show summary dialog
-    if (mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          title: const Text('📊 训练总结'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _summaryRow('动作数量', '${_exercises.length} 个'),
-              _summaryRow('完成组数', '$totalSets 组'),
-              _summaryRow('总训练量', '${totalVolume.toStringAsFixed(1)} kg·次'),
-              _summaryRow('训练时长', _formatDuration(now - _workoutRecord!.startedAt)),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(ctx).pop(); // close dialog
-                Navigator.of(context).pop(); // back to home
-              },
-              child: const Text('返回主页'),
-            ),
+    // 存储总结数据，庆祝动画完成后显示
+    final summaryData = {
+      'exercises': _exercises.length,
+      'totalSets': totalSets,
+      'totalVolume': totalVolume,
+      'duration': now - _workoutRecord!.startedAt,
+    };
+
+    // 如果庆祝动画未显示（从完成按钮直接调用），显示总结
+    if (!_showCelebration && mounted) {
+      _showSummaryDialog(summaryData);
+    }
+  }
+
+  void _showSummaryDialog(Map<String, dynamic> data) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('📊 训练总结'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _summaryRow('动作数量', '${data['exercises']} 个'),
+            _summaryRow('完成组数', '${data['totalSets']} 组'),
+            _summaryRow('总训练量', '${(data['totalVolume'] as double).toStringAsFixed(1)} kg·次'),
+            _summaryRow('训练时长', _formatDuration(data['duration'] as int)),
           ],
         ),
-      );
-    }
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop(); // close dialog
+              Navigator.of(context).pop(); // back to home
+            },
+            child: const Text('返回主页'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _summaryRow(String label, String value) {
@@ -578,8 +580,10 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     itemCount: _exercises.length,
-                    itemBuilder: (context, index) =>
-                        _buildExerciseCard(_exercises[index], index),
+                    itemBuilder: (context, index) => StaggerItem(
+                      index: index,
+                      child: _buildExerciseCard(_exercises[index], index),
+                    ),
                   ),
                 ),
 
@@ -592,6 +596,15 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
             CountdownOverlay(
               remaining: _restTimer.remaining,
               visible: _isResting && _restTimer.remaining <= 10 && _restTimer.remaining > 0,
+            ),
+
+            // 训练完成庆祝动画
+            CelebrationOverlay(
+              visible: _showCelebration,
+              onDismiss: () {
+                setState(() => _showCelebration = false);
+                Navigator.of(context).pop();
+              },
             ),
           ],
         ),
@@ -827,7 +840,7 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
         !_allDone;
 
     if (s.isCompleted) {
-      // Completed set — show summary
+      // Completed set — show summary with animated check
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Row(
@@ -842,7 +855,18 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
                 ),
               ),
             ),
-            const Icon(Icons.check_circle, color: AppColors.success, size: 18),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (child, animation) {
+                return ScaleTransition(scale: animation, child: child);
+              },
+              child: const Icon(
+                Icons.check_circle,
+                color: AppColors.success,
+                size: 18,
+                key: ValueKey('checked'),
+              ),
+            ),
             const SizedBox(width: 8),
             Text(
               '${s.actualWeight ?? 0}kg × ${s.actualReps ?? 0}次',

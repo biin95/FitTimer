@@ -4,6 +4,7 @@ import '../theme/app_colors.dart';
 import '../main.dart' show currentQuote;
 import '../services/database_service.dart';
 import '../services/weather_service.dart';
+import '../utils/page_transitions.dart';
 import 'workout_session_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -84,11 +85,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _navigateToDay(DateTime date) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => WorkoutSessionScreen(date: date),
-      ),
-    ).then((_) {
+    pushSlideFade(context, WorkoutSessionScreen(date: date)).then((_) {
       // Refresh calendar after returning from workout session
       _loadWorkouts();
       // 通知统计页面刷新数据

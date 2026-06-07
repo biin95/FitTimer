@@ -61,6 +61,11 @@ class MyApp extends StatelessWidget {
               centerTitle: true,
               elevation: 0,
             ),
+            pageTransitionsTheme: const PageTransitionsTheme(
+              builders: {
+                TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+              },
+            ),
             cardTheme: CardThemeData(
               elevation: 2,
               shape: RoundedRectangleBorder(
@@ -77,6 +82,11 @@ class MyApp extends StatelessWidget {
             appBarTheme: const AppBarTheme(
               centerTitle: true,
               elevation: 0,
+            ),
+            pageTransitionsTheme: const PageTransitionsTheme(
+              builders: {
+                TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+              },
             ),
             cardTheme: CardThemeData(
               elevation: 2,
