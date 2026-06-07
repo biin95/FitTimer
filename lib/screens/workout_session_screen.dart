@@ -1053,7 +1053,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                   // 最后 10 秒全屏遮罩
                   CountdownOverlay(
                     remaining: _restRemaining,
-                    total: _restTotal,
                     visible: _restRemaining <= 10 && _restRemaining > 0,
                   ),
                 ],

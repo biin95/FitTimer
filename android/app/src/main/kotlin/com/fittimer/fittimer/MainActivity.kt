@@ -158,7 +158,7 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        // 原生音效播放（使用系统闹钟铃声，音量最大，不受音频焦点限制）
+        // 原生音效播放（自定义音效文件，音量最大，不受音频焦点限制）
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SOUND_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -167,56 +167,54 @@ class MainActivity : FlutterActivity() {
                             var player: MediaPlayer? = null
                             try {
                                 val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                                // 把闹钟音量拉到最大
                                 val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
                                 audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0)
 
-                                // 获取系统闹钟铃声 URI
-                                var alarmUri: Uri? = RingtoneManager.getActualDefaultRingtoneUri(
-                                    applicationContext, RingtoneManager.TYPE_ALARM
-                                )
-                                // 没有设置闹钟则用通知铃声
-                                if (alarmUri == null) {
-                                    alarmUri = RingtoneManager.getActualDefaultRingtoneUri(
-                                        applicationContext, RingtoneManager.TYPE_NOTIFICATION
-                                    )
-                                }
-                                // 还是没有则用系统默认提示音
-                                if (alarmUri == null) {
-                                    alarmUri = Settings.System.DEFAULT_ALARM_ALERT_URI
-                                }
-
-                                if (alarmUri != null) {
+                                val afd = resources.openRawResourceFd(R.raw.beep_long)
+                                if (afd != null) {
                                     player = MediaPlayer()
-                                    player.setDataSource(applicationContext, alarmUri)
+                                    player.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                                    afd.close()
                                     player.setAudioStreamType(AudioManager.STREAM_ALARM)
                                     player.isLooping = false
                                     player.prepare()
                                     player.start()
-                                    // 播放 3 秒后停止
-                                    Thread.sleep(3000)
-                                    player.stop()
+                                    player.setOnCompletionListener { mp ->
+                                        mp.release()
+                                    }
+                                } else {
+                                    // 资源加载失败，fallback 系统闹钟铃声
+                                    var alarmUri: Uri? = RingtoneManager.getActualDefaultRingtoneUri(
+                                        applicationContext, RingtoneManager.TYPE_ALARM
+                                    )
+                                    if (alarmUri == null) {
+                                        alarmUri = RingtoneManager.getActualDefaultRingtoneUri(
+                                            applicationContext, RingtoneManager.TYPE_NOTIFICATION
+                                        )
+                                    }
+                                    if (alarmUri == null) {
+                                        alarmUri = Settings.System.DEFAULT_ALARM_ALERT_URI
+                                    }
+                                    if (alarmUri != null) {
+                                        player = MediaPlayer()
+                                        player.setDataSource(applicationContext, alarmUri)
+                                        player.setAudioStreamType(AudioManager.STREAM_ALARM)
+                                        player.isLooping = false
+                                        player.prepare()
+                                        player.start()
+                                        Thread.sleep(3000)
+                                        player.stop()
+                                    }
                                 }
                             } catch (e: Exception) {
-                                // fallback: ToneGenerator
-                                try {
-                                    player?.release()
-                                    player = null
-                                    val toneGen = ToneGenerator(AudioManager.STREAM_ALARM, 100)
-                                    for (i in 0 until 10) {
-                                        toneGen.startTone(ToneGenerator.TONE_SUP_CONGESTION, 250)
-                                        Thread.sleep(300)
-                                    }
-                                    toneGen.release()
-                                } catch (_: Exception) {}
-                            } finally {
                                 try { player?.release() } catch (_: Exception) {}
+                            } finally {
+                                // 只在 fallback 路径释放，正常路径由 onCompletionListener 释放
                             }
                             result.success(null)
                         }.start()
                     }
                     "stopAlert" -> {
-                        // 预留：停止正在播放的音效
                         result.success(null)
                     }
                     else -> result.notImplemented()

@@ -7,34 +7,19 @@ class SoundService {
   SoundService._internal();
 
   static const _soundChannel = MethodChannel('com.fittimer/sound');
-  bool _nativeAvailable = true; // 假设原生可用，失败后切换
 
-  /// 初始化（单例模式下无需操作，保留兼容性）
+  /// 初始化（保留接口兼容）
   Future<void> initialize() async {}
 
-  /// 播放倒计时结束提示音（2-3 秒强烈音效）
-  /// 优先使用原生 ToneGenerator（不受音频焦点限制，听歌时也能响）
+  /// 播放倒计时结束提示音
   Future<void> playEndAlert() async {
-    if (_nativeAvailable) {
-      try {
-        await _soundChannel.invokeMethod('playAlert');
-        log.log('SoundService', '原生提示音播放完成');
-        return;
-      } catch (e) {
-        log.log('SoundService', '原生提示音失败，切换到 SystemSound: $e');
-        _nativeAvailable = false;
-      }
-    }
-
-    // fallback: 连续播放系统提示音
     try {
-      for (int i = 0; i < 8; i++) {
-        await SystemSound.play(SystemSoundType.alert);
-        await Future.delayed(const Duration(milliseconds: 300));
-      }
-    } catch (_) {}
+      await _soundChannel.invokeMethod('playAlert');
+    } catch (e) {
+      log.log('SoundService', '播放失败: $e');
+    }
   }
 
-  /// 释放资源（单例模式下实际不需要）
+  /// 释放资源
   void dispose() {}
 }

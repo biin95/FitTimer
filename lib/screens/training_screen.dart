@@ -591,7 +591,6 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
             // 最后 10 秒全屏遮罩
             CountdownOverlay(
               remaining: _restTimer.remaining,
-              total: _restDurationForCurrentSet,
               visible: _isResting && _restTimer.remaining <= 10 && _restTimer.remaining > 0,
             ),
           ],

@@ -284,7 +284,6 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
             // 最后 10 秒全屏遮罩
             CountdownOverlay(
               remaining: _timerService.remaining,
-              total: _timerService.currentSegment.durationSec,
               visible: _timerService.remaining <= 10 && _timerService.remaining > 0 && !_isCompleted,
               accentColor: _timerService.currentSegment.isExercise
                   ? AppColors.exerciseSegment
