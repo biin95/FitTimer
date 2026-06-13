@@ -10,11 +10,13 @@ import '../widgets/empty_state.dart';
 import '../widgets/move_arrows.dart';
 import '../widgets/snackbar_helper.dart';
 import '../widgets/countdown_overlay.dart';
+import '../widgets/rest_timer_bar.dart';
 import '../utils/page_transitions.dart';
 import '../utils/stagger_animation.dart';
 import '../models/exercise_record.dart';
+import '../models/session_exercise.dart';
+
 import '../models/workout_template.dart';
-import '../models/template_exercise.dart';
 import '../services/database_service.dart';
 import '../services/log_service.dart';
 import '../services/notification_service.dart';
@@ -32,28 +34,22 @@ class WorkoutSessionScreen extends StatefulWidget {
 
 class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with WidgetsBindingObserver {
   static const _vibrateChannel = MethodChannel('com.fittimer/vibrate');
-  static const _restServiceChannel = MethodChannel('com.fittimer/rest_service');
 
   final DatabaseService _db = DatabaseService();
   final ScrollController _scrollController = ScrollController();
 
   WorkoutRecord? _workoutRecord;
-  List<_SessionExercise> _exercises = [];
+  List<SessionExercise> _exercises = [];
   bool _isLoading = true;
   bool _hasUnsavedChanges = false;
   bool _draftSaved = false;
   bool _isSorting = false; // 排序模式
   bool _showCelebration = false; // 庆祝动画
 
-  // Rest timer
-  int _restRemaining = 0;
-  int _restTotal = 0;
-  Timer? _restTimer;
-  Timer? _reminderTimer;
+  // Rest timer — managed by RestTimerBar widget
+  bool _isResting = false;
+  int _restDuration = 0;
   String _restExerciseName = '';
-  int _reminderDuration = 3;
-  int _restDuration = 0; // total rest duration for notification
-  DateTime? _restEndTime; // 绝对结束时间，用于息屏恢复
 
   // Notification service
   final NotificationService _notif = NotificationService();
@@ -69,41 +65,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     WidgetsBinding.instance.addObserver(this);
     _notif.initialize();
     _loadOrCreateWorkout();
-    _checkExactAlarmPermission();
   }
 
   /// 检查精确闹钟权限，如果没有则提示用户开启
-  Future<void> _checkExactAlarmPermission() async {
-    final canSchedule = await _notif.canScheduleExactAlarms();
-    if (!canSchedule && mounted) {
-      final shouldOpen = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('需要精确闹钟权限'),
-          content: const Text('为了在息屏时准确提醒休息结束，请开启"精确闹钟"权限。\n\n点击"去开启"会跳转到设置页面。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('稍后'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('去开启'),
-            ),
-          ],
-        ),
-      );
-      if (shouldOpen == true) {
-        await _notif.openExactAlarmSettings();
-      }
-    }
-  }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _restTimer?.cancel();
-    _reminderTimer?.cancel();
     _notif.cancelAll();
     _scrollController.dispose();
     super.dispose();
@@ -111,50 +79,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      // App 从后台恢复，用绝对时间重新计算剩余时间
-      _syncRestTimerOnResume();
-    }
+    // RestTimerBar handles resume sync internally
   }
 
-  /// App 恢复时同步倒计时状态
-  void _syncRestTimerOnResume() {
-    if (_restEndTime == null || _restRemaining <= 0) return;
-
-    final now = DateTime.now();
-    final remaining = _restEndTime!.difference(now).inSeconds;
-
-    if (remaining <= 0) {
-      // 倒计时已结束
-      _restTimer?.cancel();
-      _restTimer = null;
-      _restEndTime = null;
-      setState(() {
-        _restRemaining = 0;
-      });
-      // 清除所有通知（倒计时 + 提醒）
-      _notif.cancelRestNotification();
-      _notif.cancelReminderNotification();
-      // 不调用 _startReminder！
-      // AlarmManager 闹钟会自动触发 RestAlarmReceiver 处理震动和通知
-      // 如果闹钟已触发，RestAlarmReceiver 已经处理过了
-      // 如果闹钟还没触发，它会在稍后触发
-      log.log('VIBRATE', 'App恢复，倒计时已结束，等待 RestAlarmReceiver 处理');
-    } else {
-      // 更新剩余时间（不重启 Timer，只同步 UI）
-      setState(() {
-        _restRemaining = remaining;
-      });
-      // 更新通知
-      _notif.showRestCountdown(
-        exerciseName: _restExerciseName,
-        totalSeconds: _restDuration,
-        remainingSeconds: remaining,
-      );
-    }
-  }
-
-  // --- Date helpers ---
+  // --- Date helpers ---  // --- Date helpers ---
   int get _startOfDay =>
       DateTime(widget.date.year, widget.date.month, widget.date.day)
           .millisecondsSinceEpoch;
@@ -165,10 +93,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
   // --- Load existing workout or show empty ---
   Future<void> _loadOrCreateWorkout() async {
     setState(() => _isLoading = true);
-    try {
-      final reminder = await _db.getSetting('rest_reminder_duration');
-      _reminderDuration = int.tryParse(reminder ?? '') ?? 3;
-    } catch (_) {}
     try {
       final existing = await _db.getWorkoutRecordForDate(_startOfDay, _endOfDay);
       if (existing != null) {
@@ -183,7 +107,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
           e.value.sort((a, b) => a.setNumber.compareTo(b.setNumber));
           final first = e.value.first;
           if (first.exerciseType == 'interval') {
-            return _SessionExercise(
+            return SessionExercise(
               name: e.key,
               restDuration: 0,
               sets: [],
@@ -193,7 +117,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
             );
           }
           if (first.exerciseType == 'cardio') {
-            return _SessionExercise(
+            return SessionExercise(
               name: e.key,
               restDuration: 0,
               sets: [],
@@ -204,11 +128,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
               incline: first.incline,
             );
           }
-          return _SessionExercise(
+          return SessionExercise(
             name: e.key,
             restDuration: first.restDuration,
             exerciseType: 'strength',
-            sets: e.value.map((er) => _SessionSet(
+            sets: e.value.map((er) => SessionSet(
               id: er.id,
               targetReps: er.targetReps,
               actualReps: er.actualReps,
@@ -249,11 +173,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
 
   void _addStrengthExercise() {
     setState(() {
-      _exercises.add(_SessionExercise(
+      _exercises.add(SessionExercise(
         name: '',
         restDuration: 60,
         exerciseType: 'strength',
-        sets: [_SessionSet(targetReps: 10, targetWeight: 0)],
+        sets: [SessionSet(targetReps: 10, targetWeight: 0)],
       ));
       _hasUnsavedChanges = true;
       _draftSaved = false;
@@ -263,7 +187,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
 
   void _addCardioExercise() {
     setState(() {
-      _exercises.add(_SessionExercise(
+      _exercises.add(SessionExercise(
         name: '',
         restDuration: 0,
         exerciseType: 'cardio',
@@ -399,7 +323,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     setState(() {
       for (final te in templateExercises) {
         if (te.exerciseType == 'cardio') {
-          _exercises.add(_SessionExercise(
+          _exercises.add(SessionExercise(
             name: te.exerciseName,
             restDuration: 0,
             sets: [],
@@ -410,11 +334,11 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
             incline: te.incline,
           ));
         } else {
-          _exercises.add(_SessionExercise(
+          _exercises.add(SessionExercise(
             name: te.exerciseName,
             restDuration: te.restDuration,
             exerciseType: 'strength',
-            sets: List.generate(te.targetSets, (_) => _SessionSet(
+            sets: List.generate(te.targetSets, (_) => SessionSet(
               targetReps: te.targetReps,
               targetWeight: te.targetWeight,
             )),
@@ -482,101 +406,25 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
   }
 
   void _startRestTimer(int seconds, String exerciseName) async {
-    log.log('VIBRATE', '开始休息计时: $exerciseName, 休息${seconds}秒');
-    _restTimer?.cancel();
-    _reminderTimer?.cancel();
-    _vibrateChannel.invokeMethod('cancel');
+    _restDuration = seconds;
+    _restExerciseName = exerciseName;
+    _isResting = true;
+
     _notif.cancelAll();
-    _restEndTime = DateTime.now().add(Duration(seconds: seconds));
-    // 检查精确闹钟权限
+    _vibrateChannel.invokeMethod('cancel');
+
+    final endTime = DateTime.now().add(Duration(seconds: seconds));
     final canSchedule = await _notif.canScheduleExactAlarms();
     if (canSchedule) {
-      // 有权限，预定原生闹钟，息屏时由 AlarmManager 触发震动
-      _notif.scheduleVibrationReminder(exerciseName, _restEndTime!).catchError((e) {
-        log.log('VIBRATE', 'scheduleVibrationReminder 失败: $e');
+      _notif.scheduleVibrationReminder(exerciseName, endTime).catchError((e) {
+        log.log('VIBRATE', 'scheduleVibrationReminder ' + e.toString());
       });
-      log.log('VIBRATE', '已调用 scheduleVibrationReminder, endTime=$_restEndTime');
-    } else {
-      log.log('VIBRATE', '无精确闹钟权限，跳过 scheduleVibrationReminder');
     }
-    setState(() {
-      _restRemaining = seconds;
-      _restTotal = seconds;
-      _restDuration = seconds;
-      _restExerciseName = exerciseName;
-    });
-    // 前台服务已禁用，只保留倒计时通知
-    _restTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_restRemaining <= 1) {
-        log.log('VIBRATE', '休息倒计时结束, _restRemaining=$_restRemaining');
-        timer.cancel();
-        _restTimer = null;
-        // 注意：不清理 _restEndTime！让 _syncRestTimerOnResume 知道 alarm 已设置
-        setState(() {
-          _restRemaining = 0;
-        });
-        // 清除倒计时通知（RestAlarmReceiver 也会清除，这里双保险）
-        _notif.cancelRestNotification();
-        // 前台时立即播放音效（RestAlarmReceiver 有延迟）
-        _soundService.playEndAlert();
-        // 写标志告诉 RestAlarmReceiver 跳过音效（避免重复播放）
-        _notif.markSoundPlayed();
-        // 不调用 _startReminder！
-        // AlarmManager 闹钟会自动触发 RestAlarmReceiver 处理震动和通知
-        log.log('VIBRATE', '前台倒计时结束，等待 RestAlarmReceiver 处理');
-      } else {
-        setState(() {
-          _restRemaining--;
-          // 更新通知栏倒计时
-          _notif.showRestCountdown(
-            exerciseName: _restExerciseName,
-            totalSeconds: _restDuration,
-            remainingSeconds: _restRemaining,
-          );
-        });
-      }
-    });
+
+    setState(() {});
   }
 
-  Future<void> _startReminder(String exerciseName) async {
-    log.log('VIBRATE', '_startReminder 被调用, _reminderDuration=$_reminderDuration');
-    _notif.cancelRestNotification();
-    // 注意：不要在这里取消 alarm！
-    // 如果 App 从后台恢复，alarm 可能还没触发，取消它会导致息屏震动失效
-    // 如果 alarm 已经触发了，cancelAlarm 是无害的
-    // 让 alarm 自然触发或过期
 
-    // 检查是否有精确闹钟权限，有则说明 alarm 可能已触发或即将触发
-    final canSchedule = await _notif.canScheduleExactAlarms();
-    if (canSchedule) {
-      // 有权限时，alarm 已设置，不显示重复的 Dart 震动和通知
-      // 等 RestAlarmReceiver 自己处理
-      log.log('VIBRATE', '有精确闹钟权限，等待 RestAlarmReceiver 处理');
-    } else {
-      // 无权限时，用 Dart 方案作为 fallback
-      log.log('VIBRATE', '无精确闹钟权限，使用 Dart 震动 fallback');
-      _notif.showVibrationReminder(exerciseName);
-      try {
-        await _vibrateChannel.invokeMethod('vibrate', {'duration': _reminderDuration * 1000});
-      } catch (e) {
-        log.log('VIBRATE', '震动 MethodChannel 异常: $e');
-      }
-    }
-    _reminderTimer = Timer(Duration(seconds: _reminderDuration), () {
-      _reminderTimer = null;
-      _notif.cancelAll();
-      setState(() {
-        _restExerciseName = '';
-      });
-      _updateHighlight();
-    });
-  }
-
-  void _adjustRest(int delta) {
-    setState(() {
-      _restRemaining = (_restRemaining + delta).clamp(0, 9999);
-    });
-  }
 
   // --- Highlight next set ---
   void _updateHighlight() {
@@ -596,18 +444,6 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     _highlightedSetIndex = null;
   }
 
-  void _scrollToExercise(int index) {
-    if (!_scrollController.hasClients) return;
-    final offset = (index * 220.0).clamp(
-      0.0,
-      _scrollController.position.maxScrollExtent,
-    );
-    _scrollController.animateTo(
-      offset,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeOut,
-    );
-  }
 
   // --- Save workout ---
   Future<void> _saveWorkout({required bool markCompleted}) async {
@@ -1065,8 +901,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
 
                   // 最后 10 秒全屏遮罩
                   CountdownOverlay(
-                    remaining: _restRemaining,
-                    visible: _restRemaining <= 10 && _restRemaining > 0,
+                    remaining: _restDuration > 0 && _isResting ? _restDuration : 0,
+                    visible: _restDuration <= 10 && _restDuration > 0 && _isResting,
                   ),
 
                   // 训练完成庆祝动画
@@ -1097,84 +933,37 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
   }
 
   Widget _buildRestTimerBar() {
-    final isCountingDown = _restRemaining > 0;
-    final progress =
-        _restTotal > 0 ? _restRemaining / _restTotal : 0.0;
-    final minutes = _restRemaining ~/ 60;
-    final seconds = _restRemaining % 60;
-
-    return Container(
-      height: 60,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      color: isCountingDown
-          ? Theme.of(context).colorScheme.primaryContainer
-          : Theme.of(context).colorScheme.surface,
-      child: isCountingDown
-          ? Row(
-              children: [
-                const Icon(Icons.timer, size: 20),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 6,
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
-                  style: const TextStyle(
-                      fontSize: 24, fontWeight: FontWeight.bold, fontFeatures: [
-                    FontFeature.tabularFigures(),
-                  ]),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  icon: const Icon(Icons.remove, size: 20),
-                  onPressed: () => _adjustRest(-10),
-                  tooltip: '-10秒',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.add, size: 20),
-                  onPressed: () => _adjustRest(10),
-                  tooltip: '+10秒',
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  onPressed: () {
-                    _restTimer?.cancel();
-                    _restTimer = null;
-                    _reminderTimer?.cancel();
-                    _notif.cancelAll();
-                    _vibrateChannel.invokeMethod('cancel');
-                    _restEndTime = null;
-                    setState(() {
-                      _restRemaining = 0;
-                      _restExerciseName = '';
-                    });
-                  },
-                ),
-              ],
-            )
-          : Center(
-              child: Text(
-                _restExerciseName.isEmpty
-                    ? '完成一组后开始休息'
-                    : '休息 ${_restExerciseName}',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-                ),
-              ),
-            ),
+    if (!_isResting || _restDuration <= 0) {
+      return const SizedBox.shrink();
+    }
+    return RestTimerBar(
+      exerciseName: _restExerciseName,
+      initialSeconds: _restDuration,
+      onStarted: (endTime) {
+        _notif.showRestCountdown(
+          exerciseName: _restExerciseName,
+          totalSeconds: _restDuration,
+          remainingSeconds: _restDuration,
+        );
+      },
+      onTick: (remaining) {
+        _notif.showRestCountdown(
+          exerciseName: _restExerciseName,
+          totalSeconds: _restDuration,
+          remainingSeconds: remaining,
+        );
+      },
+      onRestEnd: () {
+        setState(() { _isResting = false; });
+        _soundService.playEndAlert();
+        _notif.markSoundPlayed();
+        _updateHighlight();
+      },
+      onCancelled: () {
+        setState(() { _isResting = false; });
+        _notif.cancelAll();
+        _vibrateChannel.invokeMethod('cancel');
+      },
     );
   }
 
@@ -1264,8 +1053,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                     setState(() {
                       final lastSet = exercise.sets.isNotEmpty
                           ? exercise.sets.last
-                          : _SessionSet(targetReps: 10, targetWeight: 0);
-                      exercise.sets.add(_SessionSet(
+                          : SessionSet(targetReps: 10, targetWeight: 0);
+                      exercise.sets.add(SessionSet(
                         targetReps: lastSet.targetReps,
                         targetWeight: lastSet.targetWeight,
                       ));
@@ -1564,7 +1353,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     });
   }
 
-  Widget _buildSetRow(int exerciseIndex, int setIndex, _SessionSet s) {
+  Widget _buildSetRow(int exerciseIndex, int setIndex, SessionSet s) {
     final exercise = _exercises[exerciseIndex];
     final label = '第 ${setIndex + 1} 组';
     final displayReps = s.actualReps ?? s.targetReps;
@@ -1677,46 +1466,3 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
   }
 }
 
-// --- Internal data classes ---
-
-class _SessionExercise {
-  String name;
-  int restDuration;
-  List<_SessionSet> sets;
-  String exerciseType; // 'strength' / 'cardio' / 'interval'
-  int? durationMinutes;
-  double? distanceKm;
-  double? speed;
-  double? incline;
-  int? intervalRounds;
-
-  _SessionExercise({
-    required this.name,
-    required this.restDuration,
-    required this.sets,
-    this.exerciseType = 'strength',
-    this.durationMinutes,
-    this.distanceKm,
-    this.speed,
-    this.incline,
-    this.intervalRounds,
-  });
-}
-
-class _SessionSet {
-  final int? id;
-  int targetReps;
-  double targetWeight;
-  int? actualReps;
-  double? actualWeight;
-  bool isCompleted;
-
-  _SessionSet({
-    this.id,
-    required this.targetReps,
-    required this.targetWeight,
-    this.actualReps,
-    this.actualWeight,
-    this.isCompleted = false,
-  });
-}
