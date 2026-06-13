@@ -136,6 +136,154 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildWeatherSettings() {
+    return FutureBuilder<bool>(
+      future: _isWeatherEnabled(),
+      builder: (context, snapshot) {
+        final isEnabled = snapshot.data ?? false;
+        return Column(
+          children: [
+            SwitchListTile(
+              title: const Text('天气显示'),
+              subtitle: const Text('在首页显示当前天气信息'),
+              value: isEnabled,
+              onChanged: (value) async {
+                if (value) {
+                  // 开启时弹出 API key 设置弹窗
+                  _showWeatherApiKeyDialog();
+                } else {
+                  // 关闭时直接保存
+                  await _setSetting('weather_enabled', 'false');
+                  setState(() {});
+                }
+              },
+            ),
+            if (isEnabled)
+              FutureBuilder<String?>(
+                future: _getMaskedApiKey(),
+                builder: (context, snapshot) {
+                  final maskedKey = snapshot.data ?? '未设置';
+                  return ListTile(
+                    leading: const Icon(Icons.vpn_key),
+                    title: const Text('高德 API Key'),
+                    subtitle: Text(maskedKey),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: _showWeatherApiKeyDialog,
+                  );
+                },
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<bool> _isWeatherEnabled() async {
+    final db = DatabaseService();
+    final enabled = await db.getSetting('weather_enabled');
+    return enabled == 'true';
+  }
+
+  Future<String?> _getMaskedApiKey() async {
+    final db = DatabaseService();
+    final key = await db.getSetting('amap_api_key');
+    if (key == null || key.isEmpty) return '未设置';
+    if (key.length <= 8) return '****';
+    return '${key.substring(0, 4)}****${key.substring(key.length - 4)}';
+  }
+
+  void _showWeatherApiKeyDialog() {
+    final db = DatabaseService();
+    final keyController = TextEditingController();
+    bool obscureText = true;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          // 读取已保存的 key（仅在首次显示时）
+          if (keyController.text.isEmpty) {
+            db.getSetting('amap_api_key').then((savedKey) {
+              if (savedKey != null && savedKey.isNotEmpty) {
+                keyController.text = savedKey;
+              }
+            });
+          }
+
+          return AlertDialog(
+            title: const Text('天气功能设置'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '天气功能需要使用高德 API 进行定位，请按以下步骤获取：',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('1. 访问高德开放平台：'),
+                  SelectableText(
+                    'https://lbs.amap.com',
+                    style: TextStyle(color: Theme.of(context).colorScheme.primary),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text('2. 注册并登录账号'),
+                  const Text('3. 进入「控制台」→「应用管理」→「创建新应用」'),
+                  const Text('4. 添加 Key，服务平台选择「Web服务」'),
+                  const Text('5. 复制生成的 Key 粘贴到下方输入框'),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: keyController,
+                    obscureText: obscureText,
+                    decoration: InputDecoration(
+                      labelText: '高德 API Key',
+                      hintText: '粘贴你的高德 Key',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscureText ? Icons.visibility_off : Icons.visibility),
+                        onPressed: () {
+                          setDialogState(() => obscureText = !obscureText);
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final key = keyController.text.trim();
+                  if (key.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('请输入 API Key')),
+                    );
+                    return;
+                  }
+                  await db.setSetting('amap_api_key', key);
+                  await db.setSetting('weather_enabled', 'true');
+                  if (mounted) {
+                    Navigator.pop(ctx);
+                    setState(() {});
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('天气功能已开启')),
+                    );
+                  }
+                },
+                child: const Text('保存并开启'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
   Future<void> _exportData() async {
     try {
       final db = DatabaseService();
@@ -283,6 +431,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
             ),
           ),
+
+          const Divider(height: 32),
+          Text('天气设置', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          _buildWeatherSettings(),
 
           const Divider(height: 32),
           Text('数据管理', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),

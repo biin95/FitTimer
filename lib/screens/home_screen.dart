@@ -6,6 +6,7 @@ import '../services/database_service.dart';
 import '../services/weather_service.dart';
 import '../utils/page_transitions.dart';
 import 'workout_session_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onDataChanged;
@@ -308,6 +309,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadWeather({bool forceRefresh = false}) async {
+    // 检查天气功能是否启用
+    final enabled = await WeatherService().isEnabled();
+    if (!enabled) {
+      if (mounted) {
+        setState(() {
+          _weatherData = null;
+          _weatherLoading = false;
+        });
+      }
+      return;
+    }
+
     setState(() => _weatherLoading = true);
 
     final weather = await WeatherService().fetchWeather(forceRefresh: forceRefresh);
@@ -338,21 +351,43 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     if (_weatherData == null || _weatherData!.temp.isEmpty) {
+      // 检查是否是未启用天气功能
+      final isNotEnabled = _weatherData == null && !_weatherLoading;
       return Card(
         margin: const EdgeInsets.all(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              const Icon(Icons.cloud_off, size: 28, color: AppColors.placeholder),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _weatherData?.desc.isEmpty ?? true ? '天气数据加载失败' : _weatherData!.desc,
-                  style: const TextStyle(fontSize: 13, color: AppColors.placeholder),
+        child: InkWell(
+          onTap: () {
+            if (isNotEnabled) {
+              // 跳转到设置页面
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              ).then((_) => _loadWeather());
+            }
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Icon(
+                  isNotEnabled ? Icons.settings_outlined : Icons.cloud_off,
+                  size: 28,
+                  color: AppColors.placeholder,
                 ),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    isNotEnabled ? '点击设置天气功能' : '天气数据加载失败',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isNotEnabled ? Theme.of(context).colorScheme.primary : AppColors.placeholder,
+                    ),
+                  ),
+                ),
+                if (isNotEnabled)
+                  const Icon(Icons.chevron_right, size: 20, color: AppColors.placeholder),
+              ],
+            ),
           ),
         ),
       );

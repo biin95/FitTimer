@@ -4,16 +4,83 @@ import '../theme/app_colors.dart';
 import '../theme/app_helpers.dart';
 import '../widgets/badge_number.dart';
 
-class ExerciseDetailScreen extends StatelessWidget {
+class ExerciseDetailScreen extends StatefulWidget {
   final ExerciseInfo exercise;
+  final List<ExerciseInfo>? exerciseList;
+  final int? initialIndex;
 
-  const ExerciseDetailScreen({super.key, required this.exercise});
+  const ExerciseDetailScreen({
+    super.key,
+    required this.exercise,
+    this.exerciseList,
+    this.initialIndex,
+  });
+
+  @override
+  State<ExerciseDetailScreen> createState() => _ExerciseDetailScreenState();
+}
+
+class _ExerciseDetailScreenState extends State<ExerciseDetailScreen> {
+  late int _currentIndex;
+  late List<ExerciseInfo> _exercises;
+  late PageController _pageController;
+
+  @override
+  void initState() {
+    super.initState();
+    _exercises = widget.exerciseList ?? [widget.exercise];
+    _currentIndex = widget.initialIndex ?? _exercises.indexOf(widget.exercise);
+    if (_currentIndex < 0) _currentIndex = 0;
+    _pageController = PageController(initialPage: _currentIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  ExerciseInfo get _currentExercise => _exercises[_currentIndex];
+
+  void _goToPrevious() {
+    if (_currentIndex > 0) {
+      _pageController.animateToPage(
+        _currentIndex - 1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      // 循环到最后一个
+      _pageController.animateToPage(
+        _exercises.length - 1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void _goToNext() {
+    if (_currentIndex < _exercises.length - 1) {
+      _pageController.animateToPage(
+        _currentIndex + 1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    } else {
+      // 循环到第一个
+      _pageController.animateToPage(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-
     final statusBarHeight = MediaQuery.of(context).padding.top;
+    final hasMultiple = _exercises.length > 1;
 
     return Scaffold(
       body: Column(
@@ -32,7 +99,7 @@ class ExerciseDetailScreen extends StatelessWidget {
                 ),
                 Expanded(
                   child: Text(
-                    exercise.name,
+                    _currentExercise.name,
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w600,
@@ -40,59 +107,37 @@ class ExerciseDetailScreen extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (hasMultiple) ...[
+                  // 左右切换按钮
+                  IconButton(
+                    icon: const Icon(Icons.chevron_left),
+                    onPressed: _goToPrevious,
+                  ),
+                  Text(
+                    '${_currentIndex + 1}/${_exercises.length}',
+                    style: const TextStyle(fontSize: 13),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: _goToNext,
+                  ),
+                ],
               ],
             ),
           ),
 
-          // ── 可滚动内容 ──
+          // ── 可滑动内容 ──
           Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // ── 图片 ──
-                  _buildImageHeader(colorScheme),
-
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // ── 名称 + 标签 ──
-                        _buildHeader(context),
-                        const SizedBox(height: 20),
-
-                        // ── 目标肌群 ──
-                        _buildSectionTitle(context, '目标肌群'),
-                        const SizedBox(height: 8),
-                        _buildMuscleChips(context),
-                        const SizedBox(height: 20),
-
-                        // ── 动作描述 ──
-                        _buildSectionTitle(context, '动作描述'),
-                        const SizedBox(height: 8),
-                        Text(
-                          exercise.description,
-                          style: const TextStyle(fontSize: 15, height: 1.6),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // ── 动作步骤 ──
-                        _buildSectionTitle(context, '动作步骤'),
-                        const SizedBox(height: 8),
-                        _buildSteps(context),
-                        const SizedBox(height: 20),
-
-                        // ── 要领提示 ──
-                        _buildSectionTitle(context, '要领提示'),
-                        const SizedBox(height: 8),
-                        _buildTips(context),
-                        const SizedBox(height: 32),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: _exercises.length,
+              onPageChanged: (index) {
+                setState(() => _currentIndex = index);
+              },
+              itemBuilder: (context, index) {
+                final exercise = _exercises[index];
+                return _buildExerciseContent(context, exercise, colorScheme);
+              },
             ),
           ),
         ],
@@ -100,7 +145,58 @@ class ExerciseDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildImageHeader(ColorScheme colorScheme) {
+  Widget _buildExerciseContent(BuildContext context, ExerciseInfo exercise, ColorScheme colorScheme) {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── 图片 ──
+          _buildImageHeader(exercise, colorScheme),
+
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── 名称 + 标签 ──
+                _buildHeader(context, exercise),
+                const SizedBox(height: 20),
+
+                // ── 目标肌群 ──
+                _buildSectionTitle(context, '目标肌群'),
+                const SizedBox(height: 8),
+                _buildMuscleChips(context, exercise),
+                const SizedBox(height: 20),
+
+                // ── 动作描述 ──
+                _buildSectionTitle(context, '动作描述'),
+                const SizedBox(height: 8),
+                Text(
+                  exercise.description,
+                  style: const TextStyle(fontSize: 15, height: 1.6),
+                ),
+                const SizedBox(height: 20),
+
+                // ── 动作步骤 ──
+                _buildSectionTitle(context, '动作步骤'),
+                const SizedBox(height: 8),
+                _buildSteps(context, exercise),
+                const SizedBox(height: 20),
+
+                // ── 要领提示 ──
+                _buildSectionTitle(context, '要领提示'),
+                const SizedBox(height: 8),
+                _buildTips(exercise),
+                const SizedBox(height: 32),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildImageHeader(ExerciseInfo exercise, ColorScheme colorScheme) {
     return Container(
       height: 240,
       width: double.infinity,
@@ -133,7 +229,7 @@ class ExerciseDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader(BuildContext context, ExerciseInfo exercise) {
     return Row(
       children: [
         Expanded(
@@ -193,7 +289,7 @@ class ExerciseDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMuscleChips(BuildContext context) {
+  Widget _buildMuscleChips(BuildContext context, ExerciseInfo exercise) {
     return Wrap(
       spacing: 8,
       runSpacing: 6,
@@ -207,7 +303,7 @@ class ExerciseDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSteps(BuildContext context) {
+  Widget _buildSteps(BuildContext context, ExerciseInfo exercise) {
     return Column(
       children: List.generate(exercise.steps.length, (i) {
         return Padding(
@@ -234,7 +330,7 @@ class ExerciseDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildTips(BuildContext context) {
+  Widget _buildTips(ExerciseInfo exercise) {
     return Column(
       children: exercise.tips.map((tip) {
         return Padding(
@@ -256,5 +352,4 @@ class ExerciseDetailScreen extends StatelessWidget {
       }).toList(),
     );
   }
-
 }

@@ -4,6 +4,7 @@ class ExerciseCatalog {
   ExerciseCatalog._();
 
   static const List<String> categories = [
+    '热身',
     '胸部',
     '背部',
     '腿部',
@@ -14,6 +15,198 @@ class ExerciseCatalog {
   ];
 
   static final List<ExerciseInfo> _all = [
+    // ═══════════════════════════════════════════════════════════════════
+    // 热身
+    // ═══════════════════════════════════════════════════════════════════
+    const ExerciseInfo(
+      id: 'world_greatest_stretch',
+      name: '世界最伟大拉伸',
+      category: '热身',
+      targetMuscles: ['全身', '髋关节', '胸椎'],
+      description: '世界最伟大拉伸是一个全身性动态热身动作，结合了弓步、转体和拉伸，能有效激活全身肌群。',
+      steps: [
+        '站立位，右脚向前迈一大步成弓步',
+        '左手撑地，右手向上打开转体',
+        '保持2-3秒，感受胸椎旋转',
+        '回到站立位，换另一侧重复',
+      ],
+      tips: [
+        '弓步时膝盖不超过脚尖',
+        '转体时眼睛跟随手指方向',
+        '动作缓慢控制，不要弹振',
+        '每侧做3-5次',
+      ],
+      difficulty: 'beginner',
+      imageAssetPath: 'assets/exercises/world_greatest_stretch.gif',
+    ),
+    const ExerciseInfo(
+      id: 'dynamic_chest_stretch',
+      name: '动态胸部拉伸',
+      category: '热身',
+      targetMuscles: ['胸大肌', '三角肌前束'],
+      description: '动态胸部拉伸能有效打开胸腔，激活胸部和肩部前侧肌群，适合训练前热身。',
+      steps: [
+        '双脚与肩同宽站立',
+        '双臂向两侧打开，掌心向前',
+        '感受胸部拉伸感，保持1-2秒',
+        '回到起始位置，重复动作',
+      ],
+      tips: [
+        '保持核心收紧，不要塌腰',
+        '拉伸幅度逐渐增大',
+        '呼吸配合：打开时吸气，收回时呼气',
+        '做10-15次',
+      ],
+      difficulty: 'beginner',
+      imageAssetPath: 'assets/exercises/dynamic_chest_stretch.gif',
+    ),
+    const ExerciseInfo(
+      id: 'kneeling_lat_stretch',
+      name: '跪姿背阔肌拉伸',
+      category: '热身',
+      targetMuscles: ['背阔肌', '胸椎', '肩部'],
+      description: '跪姿背阔肌拉伸能有效放松背部肌群，增加肩关节活动度，适合上肢训练前热身。',
+      steps: [
+        '四点跪姿，双手前伸',
+        '臀部向后坐，手臂尽量前伸',
+        '感受背部拉伸感，保持15-20秒',
+        '缓慢回到起始位置',
+      ],
+      tips: [
+        '保持呼吸均匀，不要憋气',
+        '臀部尽量坐向脚跟',
+        '可以左右侧偏增加单侧拉伸',
+        '做3-5次',
+      ],
+      difficulty: 'beginner',
+      imageAssetPath: 'assets/exercises/kneeling_lat_stretch.gif',
+    ),
+    const ExerciseInfo(
+      id: 'hamstring_stretch',
+      name: '腿后侧拉伸',
+      category: '热身',
+      targetMuscles: ['腘绳肌', '腓肠肌'],
+      description: '腿后侧拉伸是经典的下肢热身动作，能有效拉伸腘绳肌，预防腿部训练受伤。',
+      steps: [
+        '坐姿，一条腿伸直，另一条腿弯曲',
+        '身体前倾，双手去够伸直腿的脚尖',
+        '感受大腿后侧拉伸感，保持15-20秒',
+        '换另一侧重复',
+      ],
+      tips: [
+        '保持背部挺直，不要弓背',
+        '拉伸感应在大腿后侧，不是膝盖',
+        '不要弹振，保持静态拉伸',
+        '每侧做2-3次',
+      ],
+      difficulty: 'beginner',
+      imageAssetPath: 'assets/exercises/hamstring_stretch.gif',
+    ),
+    const ExerciseInfo(
+      id: 'calf_stretch_wall',
+      name: '靠墙小腿拉伸',
+      category: '热身',
+      targetMuscles: ['腓肠肌', '比目鱼肌'],
+      description: '靠墙小腿拉伸能有效放松小腿肌群，增加踝关节活动度，适合跑步和下肢训练前热身。',
+      steps: [
+        '面对墙壁站立，双手扶墙',
+        '一条腿向后迈一大步，脚跟踩地',
+        '前腿弯曲，感受后腿小腿拉伸',
+        '保持15-20秒，换另一侧',
+      ],
+      tips: [
+        '后腿保持伸直，脚跟不离地',
+        '身体重心前移增加拉伸强度',
+        '可以微微弯曲后腿拉伸深层肌群',
+        '每侧做2-3次',
+      ],
+      difficulty: 'beginner',
+      imageAssetPath: 'assets/exercises/calf_stretch_wall.gif',
+    ),
+    const ExerciseInfo(
+      id: 'neck_side_stretch',
+      name: '颈部侧弯拉伸',
+      category: '热身',
+      targetMuscles: ['斜方肌上束', '肩胛提肌'],
+      description: '颈部侧弯拉伸能放松颈部和上斜方肌，缓解久坐带来的颈部紧张，适合所有训练前热身。',
+      steps: [
+        '坐姿或站姿，保持身体正直',
+        '右手轻轻将头向右侧拉',
+        '感受左侧颈部拉伸感，保持15-20秒',
+        '换另一侧重复',
+      ],
+      tips: [
+        '动作轻柔，不要用力过猛',
+        '保持肩膀下沉，不要耸肩',
+        '可以微微转头增加拉伸角度',
+        '每侧做2-3次',
+      ],
+      difficulty: 'beginner',
+      imageAssetPath: 'assets/exercises/neck_side_stretch.gif',
+    ),
+    const ExerciseInfo(
+      id: 'overhead_triceps_stretch',
+      name: '过头三头肌拉伸',
+      category: '热身',
+      targetMuscles: ['肱三头肌', '肩部'],
+      description: '过头三头肌拉伸能有效放松手臂后侧肌群，增加肩关节活动度，适合上肢训练前热身。',
+      steps: [
+        '站立或坐姿，右手举过头顶',
+        '右手弯曲，手掌触碰背部中间',
+        '左手轻轻按压右手肘部',
+        '感受右臂后侧拉伸，保持15-20秒',
+      ],
+      tips: [
+        '保持核心收紧，不要塌腰',
+        '拉伸感应在手臂后侧，不是肩膀',
+        '可以微微侧弯身体增加拉伸',
+        '每侧做2-3次',
+      ],
+      difficulty: 'beginner',
+      imageAssetPath: 'assets/exercises/overhead_triceps_stretch.gif',
+    ),
+    const ExerciseInfo(
+      id: 'seated_glute_stretch',
+      name: '坐姿臀部拉伸',
+      category: '热身',
+      targetMuscles: ['臀大肌', '梨状肌'],
+      description: '坐姿臀部拉伸能有效放松臀部肌群，增加髋关节活动度，适合下肢训练前热身。',
+      steps: [
+        '坐姿，一条腿弯曲放在另一条腿上',
+        '双手抱住弯曲腿的膝盖',
+        '轻轻向胸部拉近',
+        '感受臀部拉伸感，保持15-20秒',
+      ],
+      tips: [
+        '保持背部挺直',
+        '可以微微前倾增加拉伸强度',
+        '不要用力过猛，感受轻微拉伸即可',
+        '每侧做2-3次',
+      ],
+      difficulty: 'beginner',
+      imageAssetPath: 'assets/exercises/seated_glute_stretch.gif',
+    ),
+    const ExerciseInfo(
+      id: 'upper_back_stretch',
+      name: '上背部拉伸',
+      category: '热身',
+      targetMuscles: ['斜方肌中下束', '菱形肌'],
+      description: '上背部拉伸能放松上背部肌群，改善圆肩体态，适合所有训练前热身。',
+      steps: [
+        '坐姿或站姿，双手向前伸直',
+        '双手交叉，手掌向前推',
+        '弓背向前，感受上背部拉伸',
+        '保持15-20秒，缓慢回到起始位置',
+      ],
+      tips: [
+        '保持呼吸均匀，不要憋气',
+        '拉伸感应在肩胛骨之间',
+        '可以微微低头增加拉伸',
+        '做3-5次',
+      ],
+      difficulty: 'beginner',
+      imageAssetPath: 'assets/exercises/upper_back_stretch.gif',
+    ),
     // ═══════════════════════════════════════════════════════════════════
     // 胸部
     // ═══════════════════════════════════════════════════════════════════

@@ -179,7 +179,16 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
         ),
       ),
       onTap: () {
-        pushSlideFade(context, ExerciseDetailScreen(exercise: ex));
+        final exercises = _currentExercises;
+        final index = exercises.indexOf(ex);
+        pushSlideFade(
+          context,
+          ExerciseDetailScreen(
+            exercise: ex,
+            exerciseList: exercises,
+            initialIndex: index >= 0 ? index : 0,
+          ),
+        );
       },
     );
   }

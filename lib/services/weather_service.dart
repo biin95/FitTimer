@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'database_service.dart';
 
 /// 天气数据模型
 class WeatherData {
@@ -73,9 +74,9 @@ class WeatherService {
   factory WeatherService() => _instance;
   WeatherService._internal();
 
-  // API 配置
-  static const _weatherApiKey = '642e66acb9ca46c58e6372aef43eb5de';
-  static const _amapApiKey = '183980b98d04cf8e9acb5c6804ba315c';
+  // API 配置（默认值，用户可在设置中覆盖）
+  static const _defaultWeatherApiKey = '642e66acb9ca46c58e6372aef43eb5de';
+  static const _defaultAmapApiKey = '183980b98d04cf8e9acb5c6804ba315c';
   static const _weatherHost = 'j554e6799f.re.qweatherapi.com';
 
   // 超时配置
@@ -88,10 +89,30 @@ class WeatherService {
   static const _cacheDateKey = 'weather_last_date';
   static const _cacheDuration = Duration(hours: 24);
 
+  /// 检查天气功能是否启用
+  Future<bool> isEnabled() async {
+    final db = DatabaseService();
+    final enabled = await db.getSetting('weather_enabled');
+    return enabled == 'true';
+  }
+
+  /// 获取用户设置的 API key
+  Future<String> getAmapApiKey() async {
+    final db = DatabaseService();
+    final key = await db.getSetting('amap_api_key');
+    return (key != null && key.isNotEmpty) ? key : _defaultAmapApiKey;
+  }
+
   /// 获取天气数据
   /// [forceRefresh] 是否强制刷新（忽略缓存）
   Future<WeatherData?> fetchWeather({bool forceRefresh = false}) async {
     try {
+      // 检查天气功能是否启用
+      if (!await isEnabled()) {
+        debugPrint('[Weather] 天气功能未启用');
+        return null;
+      }
+
       // 1. 检查缓存
       if (!forceRefresh) {
         final cached = await _loadFromCache();
@@ -158,9 +179,10 @@ class WeatherService {
 
   /// 高德 IP 定位（带重试）
   Future<Location?> _getAmapLocation() async {
+    final amapApiKey = await getAmapApiKey();
     for (int attempt = 0; attempt < 2; attempt++) {
       try {
-        final url = 'https://restapi.amap.com/v3/ip?key=$_amapApiKey&output=json';
+        final url = 'https://restapi.amap.com/v3/ip?key=$amapApiKey&output=json';
         debugPrint('[Weather] 高德定位请求(尝试${attempt + 1}): $url');
         final response = await http.get(Uri.parse(url)).timeout(_amapTimeout);
 
@@ -275,7 +297,7 @@ class WeatherService {
         final response = await client.get(
           Uri.parse(url),
           headers: {
-            'X-QW-Api-Key': _weatherApiKey,
+            'X-QW-Api-Key': _defaultWeatherApiKey,
             'Accept-Encoding': 'identity',
           },
         ).timeout(_weatherTimeout);
@@ -325,7 +347,7 @@ class WeatherService {
         final response = await client.get(
           Uri.parse(url),
           headers: {
-            'X-QW-Api-Key': _weatherApiKey,
+            'X-QW-Api-Key': _defaultWeatherApiKey,
             'Accept-Encoding': 'identity',
           },
         ).timeout(_weatherTimeout);
