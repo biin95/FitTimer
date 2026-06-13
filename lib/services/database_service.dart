@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -17,6 +18,7 @@ class DatabaseService {
   DatabaseService._internal();
 
   static Database? _database;
+  static DateTime? _lastBackupTime;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -658,10 +660,22 @@ class DatabaseService {
 
   // ==================== Auto Backup ====================
 
-  /// 自动备份到外部存储（/sdcard/Download/FitTimer/）
+  /// 自动备份到应用外部存储
   /// 比较记录数决定是否需要更新备份
-  Future<void> autoBackup() async {
+  /// [forceSkipDebounce] 为 true 时跳过防抖检查（启动时调用）
+  Future<void> autoBackup({bool forceSkipDebounce = false}) async {
+    // 防抖：2 秒内不重复触发
+    if (!forceSkipDebounce && _lastBackupTime != null) {
+      final elapsed = DateTime.now().difference(_lastBackupTime!).inSeconds;
+      if (elapsed < 2) {
+        debugPrint('[AutoBackup] 防抖：${elapsed}秒前刚备份过，跳过');
+        return;
+      }
+    }
+
     try {
+      debugPrint('[AutoBackup] ===== 开始自动备份检查 =====');
+      _lastBackupTime = DateTime.now();
       final db = await database;
 
       // 统计当前记录数
@@ -671,15 +685,38 @@ class DatabaseService {
       final exerciseCount = Sqflite.firstIntValue(
         await db.rawQuery('SELECT COUNT(*) FROM exercise_records'),
       ) ?? 0;
+      debugPrint('[AutoBackup] 当前记录数: workout=$workoutCount, exercise=$exerciseCount');
 
       // 没有记录就不备份
-      if (workoutCount == 0) return;
+      if (workoutCount == 0) {
+        debugPrint('[AutoBackup] 无训练记录，跳过备份');
+        return;
+      }
 
-      // 检查上次备份的记录数
-      final backupDir = Directory('/storage/emulated/0/Download/FitTimer');
+      // 优先使用用户设置的导出路径，否则使用默认的应用外部存储目录
+      String backupPath;
+      final customPath = await getSetting('export_path');
+      if (customPath != null && customPath.isNotEmpty) {
+        backupPath = customPath;
+        debugPrint('[AutoBackup] 使用用户设置的导出路径: $backupPath');
+      } else {
+        final extDir = await getExternalStorageDirectory();
+        debugPrint('[AutoBackup] getExternalStorageDirectory() 返回: ${extDir?.path ?? "null"}');
+        if (extDir == null) {
+          debugPrint('[AutoBackup] ⚠️ 外部存储目录为 null，无法备份');
+          return;
+        }
+        backupPath = '${extDir.path}/backups';
+      }
+      final backupDir = Directory(backupPath);
       if (!await backupDir.exists()) {
         await backupDir.create(recursive: true);
+        debugPrint('[AutoBackup] 已创建备份目录: ${backupDir.path}');
+      } else {
+        debugPrint('[AutoBackup] 备份目录已存在: ${backupDir.path}');
       }
+
+      // 检查上次备份的记录数
       final metaFile = File('${backupDir.path}/.backup_meta');
       int lastWorkoutCount = 0;
       int lastExerciseCount = 0;
@@ -689,36 +726,48 @@ class DatabaseService {
           final parts = meta.split(',');
           lastWorkoutCount = int.tryParse(parts[0]) ?? 0;
           lastExerciseCount = int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0;
-        } catch (_) {}
+          debugPrint('[AutoBackup] 上次备份记录数: workout=$lastWorkoutCount, exercise=$lastExerciseCount');
+        } catch (e) {
+          debugPrint('[AutoBackup] ⚠️ 读取 meta 文件失败: $e');
+        }
+      } else {
+        debugPrint('[AutoBackup] meta 文件不存在（首次备份）');
       }
 
       // 记录数没变化就跳过
-      if (workoutCount == lastWorkoutCount && exerciseCount == lastExerciseCount) return;
+      if (workoutCount == lastWorkoutCount && exerciseCount == lastExerciseCount) {
+        debugPrint('[AutoBackup] 记录数未变化，跳过备份');
+        return;
+      }
+      debugPrint('[AutoBackup] 检测到记录变化，开始导出...');
 
       // 导出数据
       final data = await exportAllData();
       final jsonStr = const JsonEncoder.withIndent('  ').convert(data);
       final now = DateTime.now();
-      final fileName = 'fittimer_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.json';
+      final fileName = 'fittimer_backup_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}.json';
       final file = File('${backupDir.path}/$fileName');
       await file.writeAsString(jsonStr, encoding: utf8);
+      debugPrint('[AutoBackup] ✅ 备份成功: ${file.path} (${jsonStr.length} 字节)');
 
       // 更新 meta
       await metaFile.writeAsString('$workoutCount,$exerciseCount');
 
-      // 清理旧备份，只保留最新 3 个
+      // 清理旧备份，只保留最新 5 个
       final backups = await backupDir
           .list()
           .where((f) => f.path.contains('fittimer_backup_') && f.path.endsWith('.json'))
           .toList();
-      if (backups.length > 3) {
+      if (backups.length > 5) {
         backups.sort((a, b) => a.path.compareTo(b.path));
-        for (int i = 0; i < backups.length - 3; i++) {
+        for (int i = 0; i < backups.length - 5; i++) {
           await backups[i].delete();
         }
+        debugPrint('[AutoBackup] 清理旧备份，保留最新 5 个');
       }
-    } catch (e) {
-      // 自动备份失败不影响 app 正常运行
+    } catch (e, stackTrace) {
+      debugPrint('[AutoBackup] ❌ 自动备份异常: $e');
+      debugPrint('[AutoBackup] 堆栈: $stackTrace');
     }
   }
 

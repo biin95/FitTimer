@@ -383,6 +383,9 @@ class _TrainingScreenState extends State<TrainingScreen> with WidgetsBindingObse
     );
     await _db.updateWorkoutRecord(updated);
 
+    // 训练完成后触发自动备份
+    _db.autoBackup();
+
     if (!mounted) return;
 
     // Calculate summary stats

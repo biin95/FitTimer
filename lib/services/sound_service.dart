@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'log_service.dart';
 
@@ -14,8 +15,11 @@ class SoundService {
   /// 播放倒计时结束提示音
   Future<void> playEndAlert() async {
     try {
+      debugPrint('[SOUND] Dart: playEndAlert 开始调用');
       await _soundChannel.invokeMethod('playAlert');
+      debugPrint('[SOUND] Dart: playEndAlert 调用成功');
     } catch (e) {
+      debugPrint('[SOUND] Dart: playEndAlert 调用失败: $e');
       log.log('SoundService', '播放失败: $e');
     }
   }

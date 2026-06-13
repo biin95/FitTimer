@@ -340,6 +340,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
       // 刷新列表
       await _loadOrCreateWorkout();
 
+      // 间歇训练完成后触发自动备份
+      _db.autoBackup();
+
       if (mounted) {
         showSuccessSnackBar(context, '间歇训练已记录：$trainingName ${rounds}轮');
       }
@@ -514,8 +517,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
         });
         // 清除倒计时通知（RestAlarmReceiver 也会清除，这里双保险）
         _notif.cancelRestNotification();
-        // 播放结束提示音
+        // 前台时立即播放音效（RestAlarmReceiver 有延迟）
         _soundService.playEndAlert();
+        // 写标志告诉 RestAlarmReceiver 跳过音效（避免重复播放）
+        _notif.markSoundPlayed();
         // 不调用 _startReminder！
         // AlarmManager 闹钟会自动触发 RestAlarmReceiver 处理震动和通知
         log.log('VIBRATE', '前台倒计时结束，等待 RestAlarmReceiver 处理');
@@ -702,6 +707,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     }
 
     _hasUnsavedChanges = false;
+
+    // 训练保存后触发自动备份
+    _db.autoBackup();
   }
 
   // --- Back button handling ---

@@ -20,8 +20,7 @@ void main() async {
   final db = DatabaseService();
   await db.database;
 
-  // 自动备份（后台执行，不阻塞启动）
-  db.autoBackup().catchError((_) {});
+  // 自动备份已改为训练完成后触发，启动时不再检查
 
   // Load saved theme mode
   final saved = await db.getSetting('dark_mode');

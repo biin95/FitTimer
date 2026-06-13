@@ -126,6 +126,16 @@ class MainActivity : FlutterActivity() {
                             result.error("CANCEL_FAILED", e.message, null)
                         }
                     }
+                    "markSoundPlayed" -> {
+                        try {
+                            val prefs = getSharedPreferences("fittimer_prefs", Context.MODE_PRIVATE)
+                            prefs.edit().putLong("sound_played_at", System.currentTimeMillis()).apply()
+                            android.util.Log.d("SOUND", "markSoundPlayed: 已写入时间戳")
+                            result.success(null)
+                        } catch (e: Exception) {
+                            result.error("MARK_FAILED", e.message, null)
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -158,7 +168,7 @@ class MainActivity : FlutterActivity() {
                 }
             }
 
-        // 原生音效播放（自定义音效文件，音量最大，不受音频焦点限制）
+        // 原生音效播放（跟随系统通知音量和静音设置）
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SOUND_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -167,49 +177,63 @@ class MainActivity : FlutterActivity() {
                             var player: MediaPlayer? = null
                             try {
                                 val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
-                                val maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-                                audioManager.setStreamVolume(AudioManager.STREAM_ALARM, maxVol, 0)
+
+                                // 检查通知音量和媒体音量，任一为0则不播放
+                                val notifVol = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION)
+                                val mediaVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+                                android.util.Log.d("SOUND", "playAlert 音量检查: 通知=$notifVol, 媒体=$mediaVol")
+                                if (notifVol == 0 || mediaVol == 0) {
+                                    android.util.Log.d("SOUND", "playAlert 音量为0，不播放音效")
+                                    result.success(null)
+                                    return@Thread
+                                }
 
                                 val afd = resources.openRawResourceFd(R.raw.beep_long)
                                 if (afd != null) {
                                     player = MediaPlayer()
                                     player.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
                                     afd.close()
-                                    player.setAudioStreamType(AudioManager.STREAM_ALARM)
+                                    player.setAudioStreamType(AudioManager.STREAM_NOTIFICATION)
                                     player.isLooping = false
                                     player.prepare()
                                     player.start()
                                     player.setOnCompletionListener { mp ->
                                         mp.release()
+                                        android.util.Log.d("SOUND", "playAlert beep_long 播放完毕")
                                     }
+                                    android.util.Log.d("SOUND", "playAlert 开始播放 beep_long (STREAM_NOTIFICATION)")
                                 } else {
-                                    // 资源加载失败，fallback 系统闹钟铃声
-                                    var alarmUri: Uri? = RingtoneManager.getActualDefaultRingtoneUri(
-                                        applicationContext, RingtoneManager.TYPE_ALARM
+                                    android.util.Log.w("SOUND", "playAlert beep_long 资源为 null，fallback 系统铃声")
+                                    // 资源加载失败，fallback 系统通知铃声
+                                    var notifUri: Uri? = RingtoneManager.getActualDefaultRingtoneUri(
+                                        applicationContext, RingtoneManager.TYPE_NOTIFICATION
                                     )
-                                    if (alarmUri == null) {
-                                        alarmUri = RingtoneManager.getActualDefaultRingtoneUri(
-                                            applicationContext, RingtoneManager.TYPE_NOTIFICATION
+                                    if (notifUri == null) {
+                                        notifUri = RingtoneManager.getActualDefaultRingtoneUri(
+                                            applicationContext, RingtoneManager.TYPE_ALARM
                                         )
                                     }
-                                    if (alarmUri == null) {
-                                        alarmUri = Settings.System.DEFAULT_ALARM_ALERT_URI
+                                    if (notifUri == null) {
+                                        notifUri = Settings.System.DEFAULT_NOTIFICATION_URI
                                     }
-                                    if (alarmUri != null) {
+                                    if (notifUri != null) {
                                         player = MediaPlayer()
-                                        player.setDataSource(applicationContext, alarmUri)
-                                        player.setAudioStreamType(AudioManager.STREAM_ALARM)
+                                        player.setDataSource(applicationContext, notifUri)
+                                        player.setAudioStreamType(AudioManager.STREAM_NOTIFICATION)
                                         player.isLooping = false
                                         player.prepare()
                                         player.start()
-                                        Thread.sleep(3000)
-                                        player.stop()
+                                        player.setOnCompletionListener { mp ->
+                                            mp.release()
+                                        }
+                                        android.util.Log.d("SOUND", "playAlert 播放系统铃声: $notifUri")
+                                    } else {
+                                        android.util.Log.w("SOUND", "playAlert 无可用铃声")
                                     }
                                 }
                             } catch (e: Exception) {
+                                android.util.Log.e("SOUND", "playAlert 异常: ${e.message}", e)
                                 try { player?.release() } catch (_: Exception) {}
-                            } finally {
-                                // 只在 fallback 路径释放，正常路径由 onCompletionListener 释放
                             }
                             result.success(null)
                         }.start()

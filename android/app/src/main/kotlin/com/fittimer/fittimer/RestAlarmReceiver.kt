@@ -6,6 +6,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.MediaPlayer
 import android.media.RingtoneManager
 import android.os.Build
 import android.os.VibrationEffect
@@ -17,7 +19,7 @@ import androidx.core.app.NotificationCompat
 
 class RestAlarmReceiver : BroadcastReceiver() {
     companion object {
-        const val CHANNEL_ID = "fittimer_reminder_v2"
+        const val CHANNEL_ID = "fittimer_reminder_v3"
         const val CHANNEL_NAME = "训练提醒"
         const val NOTIFICATION_ID = 2001
         const val REST_NOTIFICATION_ID = 1001  // 倒计时通知 ID
@@ -48,8 +50,10 @@ class RestAlarmReceiver : BroadcastReceiver() {
             android.util.Log.e("VIBRATE", "RestAlarmReceiver 震动失败", e)
         }
 
+        // 音效由前台 Dart 端播放，RestAlarmReceiver 只处理震动和通知
+
         try {
-            // 显示通知
+            // 显示通知（不含声音，声音由上方 MediaPlayer 处理）
             showNotification(context, exerciseName)
             android.util.Log.d("VIBRATE", "RestAlarmReceiver 通知显示成功")
         } catch (e: Exception) {
@@ -60,6 +64,51 @@ class RestAlarmReceiver : BroadcastReceiver() {
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             wakeLock.release()
         }, 2000L)
+    }
+
+    private fun playSound(context: Context) {
+        // 检查前台是否已播放音效（1秒内）
+        val prefs = context.getSharedPreferences("fittimer_prefs", Context.MODE_PRIVATE)
+        val soundPlayedAt = prefs.getLong("sound_played_at", 0)
+        val elapsed = System.currentTimeMillis() - soundPlayedAt
+        if (elapsed < 1000) {
+            android.util.Log.d("SOUND", "RestAlarmReceiver 跳过音效：前台已播放 (${elapsed}ms前)")
+            return
+        }
+
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+        // 检查通知音量和媒体音量，任一为0则不播放
+        val notifVol = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION)
+        val mediaVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC)
+        android.util.Log.d("SOUND", "RestAlarmReceiver 音量检查: 通知=$notifVol, 媒体=$mediaVol")
+        if (notifVol == 0 || mediaVol == 0) {
+            android.util.Log.d("SOUND", "RestAlarmReceiver 音量为0，不播放音效")
+            return
+        }
+
+        // 使用通知音量流，跟随系统通知音量
+        var player: MediaPlayer? = null
+        try {
+            val afd = context.resources.openRawResourceFd(R.raw.beep_long)
+            if (afd != null) {
+                player = MediaPlayer()
+                player.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                afd.close()
+                player.setAudioStreamType(AudioManager.STREAM_NOTIFICATION)
+                player.isLooping = false
+                player.prepare()
+                player.start()
+                player.setOnCompletionListener { mp ->
+                    mp.release()
+                    android.util.Log.d("SOUND", "RestAlarmReceiver 音效播放完毕")
+                }
+                android.util.Log.d("SOUND", "RestAlarmReceiver 开始播放 beep_long (STREAM_NOTIFICATION)")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SOUND", "RestAlarmReceiver MediaPlayer 播放失败", e)
+            try { player?.release() } catch (_: Exception) {}
+        }
     }
 
     private fun vibrate(context: Context) {
@@ -93,24 +142,18 @@ class RestAlarmReceiver : BroadcastReceiver() {
     private fun showNotification(context: Context, exerciseName: String) {
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        val audioAttrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_ALARM)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-
-        // 确保渠道存在
+        // 确保渠道存在（IMPORTANCE_LOW + 无声音，音效由 MediaPlayer 单独处理）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_HIGH
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "休息结束震动提醒"
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
-                setBypassDnd(true)
                 lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
-                setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM), audioAttrs)
+                setSound(null, null)
             }
             notificationManager.createNotificationChannel(channel)
         }
@@ -130,12 +173,12 @@ class RestAlarmReceiver : BroadcastReceiver() {
             .setContentTitle("休息结束")
             .setContentText("$exerciseName 准备开始下一组")
             .setSmallIcon(android.R.drawable.ic_media_play)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setAutoCancel(true)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setVibrate(longArrayOf(0, 500, 200, 500, 200, 500))
-            .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
+            .setSound(null)
             .setFullScreenIntent(pendingLaunch, true)
             .build()
 

@@ -17,7 +17,7 @@ class NotificationService {
 
   static const _restChannelId = 'fittimer_rest';
   static const _restChannelName = '组间休息';
-  static const _reminderChannelId = 'fittimer_reminder_v2';
+  static const _reminderChannelId = 'fittimer_reminder_v3';
   static const _reminderChannelName = '训练提醒';
 
   static const _restNotificationId = 1001;
@@ -38,6 +38,7 @@ class NotificationService {
     if (androidPlugin != null) {
       // 删除旧的震动提醒渠道
       await androidPlugin.deleteNotificationChannel('fittimer_reminder');
+      await androidPlugin.deleteNotificationChannel('fittimer_reminder_v2');
 
       await androidPlugin.createNotificationChannel(
         const AndroidNotificationChannel(
@@ -53,7 +54,7 @@ class NotificationService {
           _reminderChannelId,
           _reminderChannelName,
           description: '休息结束震动提醒',
-          importance: Importance.high,
+          importance: Importance.low,
           enableVibration: true,
         ),
       );
@@ -111,15 +112,15 @@ class NotificationService {
       _reminderChannelId,
       _reminderChannelName,
       channelDescription: '休息结束震动提醒',
-      importance: Importance.max,
-      priority: Priority.max,
+      importance: Importance.low,
+      priority: Priority.low,
       ongoing: true,
       icon: '@mipmap/ic_launcher',
       enableVibration: true,
       vibrationPattern: Int64List.fromList([0, 500, 200, 500, 200, 500]),
       fullScreenIntent: true,
-      category: AndroidNotificationCategory.alarm,
-      playSound: true,
+      category: AndroidNotificationCategory.message,
+      playSound: false,
       enableLights: true,
     );
     final details = NotificationDetails(android: androidDetails);
@@ -193,5 +194,15 @@ class NotificationService {
   /// 取消提醒通知
   Future<void> cancelReminderNotification() async {
     await _plugin.cancel(_reminderNotificationId);
+  }
+
+  /// 标记前台已播放音效（告诉 RestAlarmReceiver 跳过）
+  Future<void> markSoundPlayed() async {
+    try {
+      await _alarmChannel.invokeMethod('markSoundPlayed');
+      debugPrint('[NotificationService] markSoundPlayed 成功');
+    } catch (e) {
+      debugPrint('[NotificationService] markSoundPlayed 失败: $e');
+    }
   }
 }
