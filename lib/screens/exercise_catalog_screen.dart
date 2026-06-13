@@ -195,18 +195,20 @@ class _ExerciseCatalogScreenState extends State<ExerciseCatalogScreen> {
 
   IconData _categoryIcon(String category) {
     switch (category) {
+      case '热身':
+        return Icons.accessibility_new;
       case '胸部':
         return Icons.fitness_center;
       case '背部':
-        return Icons.accessibility_new;
+        return Icons.sports_gymnastics;
       case '腿部':
         return Icons.directions_run;
       case '肩部':
-        return Icons.sports_gymnastics;
-      case '手臂':
         return Icons.sports_martial_arts;
+      case '手臂':
+        return Icons.front_hand;
       case '核心':
-        return Icons.self_improvement;
+        return Icons.speed;
       case '有氧':
         return Icons.favorite;
       default:
