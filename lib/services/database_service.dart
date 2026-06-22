@@ -11,6 +11,7 @@ import '../models/workout_template.dart';
 import '../models/template_exercise.dart';
 import '../models/interval_training.dart';
 import '../models/interval_segment.dart';
+import '../models/kegel_record.dart';
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -31,7 +32,7 @@ class DatabaseService {
     final path = join(directory.path, 'fittimer.db');
     return await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -111,6 +112,10 @@ class DatabaseService {
       } catch (_) {
         // Column may already exist from v4->v5 migration; ignore
       }
+    }
+    if (oldVersion < 7) {
+      // Add kegel_records table for Kegel exercise
+      await db.execute("CREATE TABLE IF NOT EXISTS kegel_records (id INTEGER PRIMARY KEY AUTOINCREMENT, date INTEGER NOT NULL, total_sets INTEGER NOT NULL, completed_sets INTEGER NOT NULL, created_at INTEGER NOT NULL)");
     }
   }
 
@@ -204,6 +209,16 @@ class DatabaseService {
         duration_sec INTEGER NOT NULL,
         name TEXT,
         FOREIGN KEY (training_id) REFERENCES interval_trainings(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE kegel_records (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date INTEGER NOT NULL,
+        total_sets INTEGER NOT NULL,
+        completed_sets INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
       )
     ''');
   }
@@ -585,6 +600,7 @@ class DatabaseService {
     final templateExerciseMaps = await db.query('template_exercises');
     final intervalTrainingMaps = await db.query('interval_trainings');
     final intervalSegmentMaps = await db.query('interval_segments');
+    final kegelMaps = await db.query('kegel_records');
     final settingsMaps = await db.query('settings');
 
     return {
@@ -594,6 +610,7 @@ class DatabaseService {
       'template_exercises': templateExerciseMaps,
       'interval_trainings': intervalTrainingMaps,
       'interval_segments': intervalSegmentMaps,
+      'kegel_records': kegelMaps,
       'settings': settingsMaps,
       'exported_at': DateTime.now().millisecondsSinceEpoch,
     };
@@ -610,6 +627,7 @@ class DatabaseService {
       await txn.delete('workout_records');
       await txn.delete('template_exercises');
       await txn.delete('workout_templates');
+      await txn.delete('kegel_records');
       await txn.delete('settings');
 
       // Import workout records
@@ -656,6 +674,13 @@ class DatabaseService {
       if (data['interval_segments'] != null) {
         for (var record in data['interval_segments'] as List) {
           await txn.insert('interval_segments', Map<String, dynamic>.from(record as Map));
+        }
+      }
+
+      // Import kegel records
+      if (data['kegel_records'] != null) {
+        for (var record in data['kegel_records'] as List) {
+          await txn.insert('kegel_records', Map<String, dynamic>.from(record as Map));
         }
       }
 
@@ -787,6 +812,48 @@ class DatabaseService {
     final db = await database;
     await db.close();
     _database = null;
+  }
+
+  // ==================== KegelRecord CRUD ====================
+
+  Future<int> insertKegelRecord(KegelRecord record) async {
+    final db = await database;
+    return await db.insert('kegel_records', record.toMap()..remove('id'));
+  }
+
+  Future<List<KegelRecord>> getKegelRecordsByDateRange(int startMs, int endMs) async {
+    final db = await database;
+    final maps = await db.query(
+      'kegel_records',
+      where: 'date >= ? AND date <= ?',
+      whereArgs: [startMs, endMs],
+      orderBy: 'created_at DESC',
+    );
+    return maps.map((m) => KegelRecord.fromMap(m)).toList();
+  }
+
+  /// Get today's count (sum of completed_sets)
+  Future<int> getKegelTodayCount() async {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day).millisecondsSinceEpoch;
+    final endOfDay = startOfDay + 86400000 - 1;
+    final records = await getKegelRecordsByDateRange(startOfDay, endOfDay);
+    return records.fold<int>(0, (sum, r) => sum + r.completedSets);
+  }
+
+  /// Get this week's count (sum of completed_sets, Mon-Sun)
+  Future<int> getKegelWeekCount() async {
+    final now = DateTime.now();
+    final weekday = now.weekday;
+    final startOfWeek = DateTime(now.year, now.month, now.day - weekday + 1).millisecondsSinceEpoch;
+    final endOfWeek = DateTime(now.year, now.month, now.day + (7 - weekday), 23, 59, 59).millisecondsSinceEpoch;
+    final records = await getKegelRecordsByDateRange(startOfWeek, endOfWeek);
+    return records.fold<int>(0, (sum, r) => sum + r.completedSets);
+  }
+
+  Future<void> deleteKegelRecord(int id) async {
+    final db = await database;
+    await db.delete('kegel_records', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<void> deleteDatabase() async {

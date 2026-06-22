@@ -14,6 +14,9 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import android.speech.tts.TextToSpeech
+import android.speech.tts.Voice
+import java.util.Locale
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -24,6 +27,13 @@ class MainActivity : FlutterActivity() {
     private val ALARM_CHANNEL = "com.fittimer/alarm"
     private val EXACT_ALARM_CHANNEL = "com.fittimer/exact_alarm"
     private val SOUND_CHANNEL = "com.fittimer/sound"
+    private val TTS_CHANNEL = "com.fittimer/tts"
+    private var tts: TextToSpeech? = null
+
+    override fun onDestroy() {
+        tts?.shutdown()
+        super.onDestroy()
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -246,6 +256,54 @@ class MainActivity : FlutterActivity() {
             }
 
         // 精确闹钟权限检测和跳转
+        // TTS for Kegel exercise voice guidance
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, TTS_CHANNEL)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "speak" -> {
+                        val text = call.argument<String>("text") ?: ""
+                        if (tts == null) {
+                            tts = TextToSpeech(this@MainActivity) { status ->
+                                if (status == TextToSpeech.SUCCESS) {
+                                    tts?.language = Locale.CHINESE
+                                    // Select best available Chinese voice
+                                    try {
+                                        val voices = tts?.voices
+                                        if (voices != null) {
+                                            val bestVoice = voices.firstOrNull {
+                                                it.locale.language == "zh" && it.quality == Voice.QUALITY_HIGH
+                                            }
+                                            if (bestVoice != null) tts?.voice = bestVoice
+                                        }
+                                    } catch (_: Exception) {}
+                                    tts?.setPitch(1.2f)
+                                    tts?.setSpeechRate(0.9f)
+                                    tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+                                }
+                            }
+                        } else {
+                            try {
+                                val voices = tts?.voices
+                                if (voices != null) {
+                                    val bestVoice = voices.firstOrNull {
+                                        it.locale.language == "zh" && it.quality == Voice.QUALITY_HIGH
+                                    }
+                                    if (bestVoice != null) tts?.voice = bestVoice
+                                }
+                            } catch (_: Exception) {}
+                            tts?.setPitch(1.2f)
+                            tts?.setSpeechRate(0.9f)
+                            tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, null)
+                        }
+                        result.success(null)
+                    }
+                    "stop" -> {
+                        tts?.stop()
+                        result.success(null)
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, EXACT_ALARM_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {

@@ -7,6 +7,7 @@ import '../services/weather_service.dart';
 import '../utils/page_transitions.dart';
 import 'workout_session_screen.dart';
 import 'settings_screen.dart';
+import 'kegel_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onDataChanged;
@@ -22,6 +23,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Map<DateTime, List<String>> _workoutTypes = {};
   Set<DateTime> _completedDates = {};
   bool _isLoading = true;
+  double _fabX = 280;
+  double _fabY = 120;
   WeatherData? _weatherData;
   bool _weatherLoading = true;
 
@@ -113,9 +116,12 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('FitTimer'),
         centerTitle: true,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
+      body: Stack(
+        children: [
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator())
+          else
+            SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -127,9 +133,32 @@ class _HomeScreenState extends State<HomeScreen> {
 
                   // Weather
                   _buildWeatherCard(),
+
                 ],
               ),
             ),
+          // Draggable Kegel FAB
+          Positioned(
+            left: _fabX,
+            top: _fabY,
+            child: GestureDetector(
+              onPanUpdate: (details) {
+                setState(() {
+                  _fabX += details.delta.dx;
+                  _fabY += details.delta.dy;
+                });
+              },
+              child: FloatingActionButton.small(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const KegelScreen()),
+                ),
+                tooltip: '凯格尔训练',
+                child: const Icon(Icons.self_improvement),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -464,5 +493,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+
 
 }
