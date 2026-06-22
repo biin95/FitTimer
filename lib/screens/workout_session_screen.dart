@@ -480,12 +480,13 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
       date: _workoutRecord!.date,
       sportType: sportType,
       startedAt: _workoutRecord!.startedAt,
-      completedAt: markCompleted ? DateTime.now().millisecondsSinceEpoch : null,
-      isCompleted: markCompleted,
+      completedAt: markCompleted
+          ? DateTime.now().millisecondsSinceEpoch
+          : _workoutRecord!.completedAt,
+      isCompleted: markCompleted ? true : _workoutRecord!.isCompleted,
     );
     await _db.updateWorkoutRecord(updated);
     _workoutRecord = updated;
-
     // Delete old exercise records and re-insert
     await _db.deleteExerciseRecordsForWorkout(_workoutRecord!.id!);
     for (int i = 0; i < _exercises.length; i++) {
@@ -521,6 +522,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
           distanceKm: ex.distanceKm,
           speed: ex.speed,
           incline: ex.incline,
+          isCompleted: true,
           createdAt: DateTime.now().millisecondsSinceEpoch,
         ));
       } else {
@@ -550,8 +552,8 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
 
   // --- Back button handling ---
   Future<bool> _onWillPop() async {
-    if (!_hasUnsavedChanges && _workoutRecord == null) return true;
-    if (!_hasUnsavedChanges) return true;
+    if (!_hasUnsavedChanges && _workoutRecord == null) { return true; }
+    if (!_hasUnsavedChanges) { return true; }
 
     final result = await showDialog<String>(
       context: context,
@@ -809,7 +811,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: PopScope(
-        canPop: false,
+        canPop: _showCelebration,
         onPopInvokedWithResult: (didPop, _) async {
           if (didPop) return;
           final shouldPop = await _onWillPop();
@@ -909,7 +911,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                   CelebrationOverlay(
                     visible: _showCelebration,
                     onDismiss: () {
-                      setState(() => _showCelebration = false);
+                      // Pop while canPop is still true (before setState changes it)
                       Navigator.of(context).pop();
                     },
                   ),
@@ -1429,6 +1431,9 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
 
   Widget _buildBottomBar() {
     final isCompleted = _workoutRecord?.isCompleted == true;
+    final hasContent = _exercises.isNotEmpty;
+    final canComplete = hasContent && (!isCompleted || _hasUnsavedChanges);
+    final showComplete = isCompleted && !_hasUnsavedChanges;
 
     return SafeArea(
       child: Padding(
@@ -1453,10 +1458,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
             const SizedBox(width: 16),
             Expanded(
               child: FilledButton.icon(
-                onPressed: isCompleted ? null : _completeTraining,
+                onPressed: canComplete ? _completeTraining : null,
                 icon: Icon(
-                    isCompleted ? Icons.check_circle : Icons.flag),
-                label: Text(isCompleted ? '已完成' : '训练完成'),
+                    showComplete ? Icons.check_circle : Icons.flag),
+                label: Text(showComplete ? '已完成' : '训练完成'),
               ),
             ),
           ],

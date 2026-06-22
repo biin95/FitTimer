@@ -31,7 +31,7 @@ class DatabaseService {
     final path = join(directory.path, 'fittimer.db');
     return await openDatabase(
       path,
-      version: 5,
+      version: 6,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -103,6 +103,15 @@ class DatabaseService {
       // Add interval fields to template_exercises
       await db.execute('ALTER TABLE template_exercises ADD COLUMN interval_rounds INTEGER');
     }
+    if (oldVersion < 6) {
+      // Ensure template_exercises has interval_rounds column
+      // (it was missing from _onCreate in v5, so DBs created at v5 lack it)
+      try {
+        await db.execute('ALTER TABLE template_exercises ADD COLUMN interval_rounds INTEGER');
+      } catch (_) {
+        // Column may already exist from v4->v5 migration; ignore
+      }
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -164,6 +173,7 @@ class DatabaseService {
         distance_km REAL,
         speed REAL,
         incline REAL,
+        interval_rounds INTEGER,
         FOREIGN KEY (template_id) REFERENCES workout_templates(id) ON DELETE CASCADE
       )
     ''');

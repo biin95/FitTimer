@@ -46,6 +46,10 @@ class _HomeScreenState extends State<HomeScreen> {
       final workoutTypes = <DateTime, List<String>>{};
       final completedDates = <DateTime>{};
 
+      // Count records per date
+      final recordCountPerDate = <DateTime, int>{};
+      final completedCountPerDate = <DateTime, int>{};
+
       for (final record in records) {
         final date = DateTime.fromMillisecondsSinceEpoch(record.date);
         final dateKey = DateTime(date.year, date.month, date.day);
@@ -55,7 +59,15 @@ class _HomeScreenState extends State<HomeScreen> {
         }
         workoutTypes[dateKey]!.add(record.sportType);
 
+        recordCountPerDate[dateKey] = (recordCountPerDate[dateKey] ?? 0) + 1;
         if (record.isCompleted) {
+          completedCountPerDate[dateKey] = (completedCountPerDate[dateKey] ?? 0) + 1;
+        }
+      }
+
+      // Only mark date completed if ALL records for that date are completed
+      for (final dateKey in recordCountPerDate.keys) {
+        if (completedCountPerDate[dateKey] == recordCountPerDate[dateKey]) {
           completedDates.add(dateKey);
         }
       }
@@ -294,6 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Text(
                 '$icons${isCompleted ? '✅' : ''}',
                 style: const TextStyle(fontSize: 10),
+                softWrap: false,
               ),
           ],
         ),
