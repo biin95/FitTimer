@@ -917,7 +917,7 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
                   ),
                 ],
               ),
-        floatingActionButton: (_exercises.isEmpty || _draftSaved || _isSorting)
+        floatingActionButton: (_exercises.isEmpty || _draftSaved || _isSorting || (_restDuration <= 10 && _restDuration > 0 && _isResting))
             ? null
             : Container(
                 margin: const EdgeInsets.only(bottom: 80),
@@ -936,7 +936,24 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
 
   Widget _buildRestTimerBar() {
     if (!_isResting || _restDuration <= 0) {
-      return const SizedBox.shrink();
+      return Container(
+        height: 60,
+        color: Theme.of(context).colorScheme.surface,
+        child: Center(
+          child: Text(
+            _restExerciseName.isEmpty
+                ? '完成一组后开始休息'
+                : '休息 ' + _restExerciseName,
+            style: TextStyle(
+              fontSize: 13,
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.5),
+            ),
+          ),
+        ),
+      );
     }
     return RestTimerBar(
       exerciseName: _restExerciseName,
@@ -949,6 +966,10 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> with Widget
         );
       },
       onTick: (remaining) {
+        final wasOverlay = _restDuration <= 10;
+        _restDuration = remaining;
+        final nowOverlay = _restDuration <= 10;
+        if (nowOverlay && mounted) setState(() {});
         _notif.showRestCountdown(
           exerciseName: _restExerciseName,
           totalSeconds: _restDuration,

@@ -18,13 +18,16 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+
+
   late DateTime _currentMonth;
   late DatabaseService _databaseService;
   Map<DateTime, List<String>> _workoutTypes = {};
   Set<DateTime> _completedDates = {};
   bool _isLoading = true;
-  double _fabX = 280;
-  double _fabY = 120;
+  double _fabX = 0;
+  double _fabY = 0;
+  bool _fabInitialized = false;
   WeatherData? _weatherData;
   bool _weatherLoading = true;
 
@@ -35,6 +38,21 @@ class _HomeScreenState extends State<HomeScreen> {
     _databaseService = DatabaseService();
     _loadWorkouts();
     _loadWeather();
+    _initFabPosition();
+  }
+
+  void _initFabPosition() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final size = MediaQuery.of(context).size;
+      const fabSize = 56.0;
+      const bottomNav = 80.0;
+      setState(() {
+        _fabX = size.width - fabSize - 16;
+        _fabY = size.height - fabSize - bottomNav - 16;
+        _fabInitialized = true;
+      });
+    });
   }
 
   Future<void> _loadWorkouts() async {
@@ -111,58 +129,59 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('FitTimer'),
-        centerTitle: true,
-      ),
-      body: Stack(
-        children: [
-          if (_isLoading)
-            const Center(child: CircularProgressIndicator())
-          else
-            SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Motivational Quote
-                  _buildQuoteCard(),
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: const Text('FitTimer'),
+            centerTitle: true,
+          ),
+          body: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Motivational Quote
+                      _buildQuoteCard(),
 
-                  // Calendar
-                  _buildCalendar(),
+                      // Calendar
+                      _buildCalendar(),
 
-                  // Weather
-                  _buildWeatherCard(),
+                      // Weather
+                      _buildWeatherCard(),
 
-                ],
-              ),
-            ),
-          // Draggable Kegel FAB
-          Positioned(
-            left: _fabX,
-            top: _fabY,
-            child: GestureDetector(
-              onPanUpdate: (details) {
-                setState(() {
-                  _fabX += details.delta.dx;
-                  _fabY += details.delta.dy;
-                });
-              },
-              child: FloatingActionButton.small(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const KegelScreen()),
+                    ],
+                  ),
                 ),
-                tooltip: '凯格尔训练',
-                child: const Icon(Icons.self_improvement),
+        ),
+        // Draggable Kegel FAB (on top of everything, including AppBar)
+        Positioned(
+          left: _fabX,
+          top: _fabY,
+          child: GestureDetector(
+            onPanUpdate: (details) {
+              setState(() {
+                final size = MediaQuery.of(context).size;
+                final topBar = MediaQuery.of(context).padding.top + kToolbarHeight;
+                const fabSize = 56.0;
+                const bottomNav = 80.0;
+                _fabX = (_fabX + details.delta.dx).clamp(0.0, size.width - fabSize);
+                _fabY = (_fabY + details.delta.dy).clamp(topBar, size.height - fabSize - bottomNav);
+              });
+            },
+            child: FloatingActionButton.small(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const KegelScreen()),
               ),
+              tooltip: '凯格尔训练',
+              child: const Icon(Icons.self_improvement),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
-  }
-
-  Widget _buildQuoteCard() {
+  }  Widget _buildQuoteCard() {
     return Card(
       margin: const EdgeInsets.all(16),
       child: Padding(

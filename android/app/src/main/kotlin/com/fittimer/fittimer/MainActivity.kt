@@ -208,6 +208,7 @@ class MainActivity : FlutterActivity() {
                                     player.prepare()
                                     player.start()
                                     player.setOnCompletionListener { mp ->
+                                        mp.reset()
                                         mp.release()
                                         android.util.Log.d("SOUND", "playAlert beep_long 播放完毕")
                                     }
@@ -234,7 +235,8 @@ class MainActivity : FlutterActivity() {
                                         player.prepare()
                                         player.start()
                                         player.setOnCompletionListener { mp ->
-                                            mp.release()
+                                            mp.reset()
+                                        mp.release()
                                         }
                                         android.util.Log.d("SOUND", "playAlert 播放系统铃声: $notifUri")
                                     } else {

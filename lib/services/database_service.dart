@@ -752,7 +752,7 @@ class DatabaseService {
       }
 
       // 检查上次备份的记录数
-      final metaFile = File('${backupDir.path}/.backup_meta');
+      final metaFile = File('${backupDir.path}/backup_meta.txt');
       int lastWorkoutCount = 0;
       int lastExerciseCount = 0;
       if (await metaFile.exists()) {
