@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:just_audio/just_audio.dart';
 import '../services/database_service.dart';
 import '../models/kegel_record.dart';
 
@@ -21,9 +22,9 @@ class KegelTrainingScreen extends StatefulWidget {
 }
 
 class _KegelTrainingScreenState extends State<KegelTrainingScreen> {
-  static const _ttsChannel = MethodChannel('com.fittimer/tts');
+  final _player = AudioPlayer();
 
-  late int _remaining;
+  int _remaining = 0;
   int _currentRound = 0;
   bool _isTightening = true; // true=tighten, false=relax
   bool _isRunning = false;
@@ -35,13 +36,20 @@ class _KegelTrainingScreenState extends State<KegelTrainingScreen> {
   @override
   void initState() {
     super.initState();
-    _startRound();
+    // Warm up the audio player before first use
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        // Just warm up the native player, no need to stop
+        await _player.setAsset('assets/sounds/kegel_tighten.mp3');
+      } catch (_) {}
+      if (mounted) _startRound();
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    _ttsChannel.invokeMethod('stop');
+    _player.dispose();
     super.dispose();
   }
 
@@ -54,7 +62,7 @@ class _KegelTrainingScreenState extends State<KegelTrainingScreen> {
     _isTightening = true;
     _remaining = widget.tightenSeconds;
     _isRunning = true;
-    _speak('收紧');
+    _playKegelSound('tighten');
     _startTimer();
   }
 
@@ -73,12 +81,14 @@ class _KegelTrainingScreenState extends State<KegelTrainingScreen> {
   void _onPhaseComplete() {
     if (_isTightening) {
       // Tighten phase done -> switch to relax
+      _timer?.cancel();
       HapticFeedback.lightImpact();
       setState(() {
         _isTightening = false;
         _remaining = widget.relaxSeconds;
       });
-      _speak('放松');
+      _playKegelSound('relax');
+      _startTimer();
     } else {
       // Relax phase done -> round complete
       _timer?.cancel();
@@ -95,10 +105,12 @@ class _KegelTrainingScreenState extends State<KegelTrainingScreen> {
     }
   }
 
-  void _speak(String text) {
+  Future<void> _playKegelSound(String direction) async {
     try {
-      _ttsChannel.invokeMethod('speak', {'text': text});
-    } catch (_) {}
+            await _player.setAsset('assets/sounds/kegel_$direction.mp3');
+            _player.play();
+          } catch (e) {
+          }
   }
 
   Future<void> _finishTraining() async {
@@ -122,10 +134,13 @@ class _KegelTrainingScreenState extends State<KegelTrainingScreen> {
     }
   }
 
-  void _skipToNext() {
-    _timer?.cancel();
-    _remaining = 0;
-    _onPhaseComplete();
+    void _skipToNext() {
+    if (_isTightening) {
+      _remaining = 0;
+    } else {
+      _timer?.cancel();
+      _onPhaseComplete();
+    }
   }
 
   @override
