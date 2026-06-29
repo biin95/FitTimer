@@ -122,21 +122,30 @@ class IntervalTimerService extends ChangeNotifier {
     _remaining = segment.durationSec;
     _endTime = DateTime.now().add(Duration(seconds: _remaining));
 
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_remaining <= 1) {
-        timer.cancel();
-        _timer = null;
-        _remaining = 0;
-        notifyListeners();
-        _onSegmentComplete();
-      } else {
-        _remaining--;
-        notifyListeners();
-      }
-    });
+    _startTimerLoop();
 
     notifyListeners();
+  }
+
+  /// 启动/重启 timer 循环（不重置 _remaining，供 syncOnResume 使用）
+  void _startTimerLoop() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), _onTimerTick);
+  }
+
+  /// timer 每秒回调：从墙钟计算剩余时间
+  void _onTimerTick(Timer timer) {
+    final wallRemaining = _endTime!.difference(DateTime.now()).inSeconds;
+    if (wallRemaining <= 0) {
+      timer.cancel();
+      _timer = null;
+      _remaining = 0;
+      notifyListeners();
+      _onSegmentComplete();
+    } else {
+      _remaining = wallRemaining;
+      notifyListeners();
+    }
   }
 
   /// 段完成处理
@@ -219,23 +228,28 @@ class IntervalTimerService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 息屏恢复时同步状态
+  /// 息屏/浮窗/分屏恢复时同步状态
   void syncOnResume() {
     if (!_isRunning || _isPaused || _endTime == null) return;
+
+    // 先取消旧 timer，防止积压的 tick 继续触发（浮窗/分屏恢复时常见问题）
+    _timer?.cancel();
+    _timer = null;
 
     final now = DateTime.now();
     final remaining = _endTime!.difference(now).inSeconds;
 
+
     if (remaining <= 0) {
       // 倒计时已结束
-      _timer?.cancel();
-      _timer = null;
       _remaining = 0;
       notifyListeners();
       _onSegmentComplete();
     } else {
-      // 更新剩余时间
+      // 只更新剩余时间 + _endTime，不调 _startCurrentSegment（会重置 _remaining）
       _remaining = remaining;
+      _endTime = DateTime.now().add(Duration(seconds: _remaining));
+      _startTimerLoop();
       notifyListeners();
     }
   }

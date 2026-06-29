@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'log_service.dart';
 
 /// A countdown timer service for rest periods between sets.
 ///
@@ -43,30 +44,18 @@ class TimerService extends ChangeNotifier {
     _isRunning = true;
     _endTime = DateTime.now().add(Duration(seconds: durationSeconds));
     notifyListeners();
-
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _remaining--;
-      notifyListeners();
-
-      if (_remaining <= 0) {
-        _timer?.cancel();
-        _timer = null;
-        _isRunning = false;
-        _endTime = null;
-        _remaining = 0;
-        notifyListeners();
-        onComplete?.call();
-      }
-    });
+    _startTimer();
   }
 
-  /// 同步剩余时间（用于 app 从后台恢复时调用）
-  void syncOnResume() {
-    if (_endTime == null || !_isRunning) return;
-    final now = DateTime.now();
-    final remaining = _endTime!.difference(now).inSeconds;
-    if (remaining <= 0) {
-      // 倒计时已结束
+  /// 启动 periodic 定时器（内部方法，供 start/syncOnResume 共用）
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), _onTimerTick);
+  }
+
+  void _onTimerTick(Timer timer) {
+    final wallRemaining = _endTime!.difference(DateTime.now()).inSeconds;
+    if (wallRemaining <= 0) {
       _timer?.cancel();
       _timer = null;
       _isRunning = false;
@@ -75,8 +64,36 @@ class TimerService extends ChangeNotifier {
       notifyListeners();
       onComplete?.call();
     } else {
-      _remaining = remaining;
+      _remaining = wallRemaining;
       notifyListeners();
+    }
+  }
+
+  /// 同步剩余时间（用于息屏/浮窗/分屏恢复时调用）
+  void syncOnResume() {
+    if (_endTime == null || !_isRunning) return;
+
+    // 先取消旧 timer，防止积压的 tick 继续触发（浮窗/分屏恢复时常见问题）
+    _timer?.cancel();
+    _timer = null;
+
+    final now = DateTime.now();
+    final remaining = _endTime!.difference(now).inSeconds;
+
+    log.log('TimerSvc', 'syncOnResume: oldRem=$_remaining newRem=$remaining');
+
+    if (remaining <= 0) {
+      // 倒计时已结束
+      _isRunning = false;
+      _endTime = null;
+      _remaining = 0;
+      notifyListeners();
+      onComplete?.call();
+    } else {
+      _remaining = remaining;
+      _endTime = DateTime.now().add(Duration(seconds: _remaining));
+      notifyListeners();
+      _startTimer();
     }
   }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../services/log_service.dart';
 
 /// 独立管理的组间休息倒计时条。
 ///
@@ -117,37 +118,53 @@ class RestTimerBarState extends State<RestTimerBar>
     widget.onStarted?.call(_endTime!);
     widget.onTick?.call(_remaining);
     setState(() {});
+    _startTimer();
+  }
 
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      _remaining--;
-      widget.onTick?.call(_remaining);
-      if (_remaining <= 0) {
-        _timer?.cancel();
-        _timer = null;
-        _remaining = 0;
-        _endTime = null;
-        _finish();
-      } else {
-        setState(() {});
-      }
-    });
+  /// 创建 timer（内部方法，供 _start / _syncOnResume 共用）
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), _onTimerTick);
+  }
+
+  void _onTimerTick(Timer timer) {
+    final wallRemaining = _endTime!.difference(DateTime.now()).inSeconds;
+    widget.onTick?.call(_remaining);
+    if (wallRemaining <= 0) {
+      _timer?.cancel();
+      _timer = null;
+      _remaining = 0;
+      _endTime = null;
+      _finish();
+    } else {
+      _remaining = wallRemaining;
+      setState(() {});
+    }
   }
 
   void _syncOnResume() {
     if (_endTime == null || _remaining <= 0) return;
+
+    // 先取消旧 timer，防止积压的 tick 继续触发（浮窗/分屏恢复时常见问题）
+    _timer?.cancel();
+    _timer = null;
+
     final now = DateTime.now();
     final remaining = _endTime!.difference(now).inSeconds;
+
+    log.log('RestBar', 'syncOnResume: oldRem=$_remaining newRem=$remaining');
+
     if (remaining <= 0) {
-      _timer?.cancel();
-      _timer = null;
       _remaining = 0;
       _endTime = null;
       widget.onRestEnd?.call();
       setState(() {});
     } else {
       _remaining = remaining;
+      _endTime = DateTime.now().add(Duration(seconds: _remaining));
       widget.onTick?.call(_remaining);
       setState(() {});
+      _startTimer();
     }
   }
 

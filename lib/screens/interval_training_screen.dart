@@ -35,6 +35,7 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
   DateTime? _trainingStartTime;
   bool _userPaused = false; // 用户手动暂停标志
   bool _isAppActive = true; // App 是否在前台（防止浮窗切换时 Semantics 自动触发 skip）
+  DateTime? _lastResumeAt; // 最近一次 resume 时间，用于 Semantics 误触守卫
 
   @override
   void initState() {
@@ -153,7 +154,12 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
   }
 
   void _skipSegment() {
-    if (!_isAppActive) return; // 防止浮窗切换时 Semantics 自动触发
+    if (!_isAppActive) return;
+    // 浮窗/分屏恢复时 Semantics 可能模拟 tap 跳过按钮，800ms 内忽略
+    if (_lastResumeAt != null &&
+        DateTime.now().difference(_lastResumeAt!).inMilliseconds < 800) {
+      return;
+    }
     _timerService.skipSegment();
   }
 
@@ -191,6 +197,7 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
     if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
       _isAppActive = false; // 后台，禁止 skip
     } else if (state == AppLifecycleState.resumed) {
+      _lastResumeAt = DateTime.now();
       _isAppActive = true;
       if (_timerService.isRunning && !_timerService.isPaused) {
         _timerService.syncOnResume();
@@ -407,14 +414,17 @@ class _IntervalTrainingScreenState extends State<IntervalTrainingScreen> with Wi
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            // 跳过按钮
-            ElevatedButton.icon(
-              onPressed: _skipSegment,
-              icon: const Icon(Icons.skip_next),
-              label: const Text('跳过'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.exerciseSegment,
-                foregroundColor: AppColors.onColoredBadge,
+            // 跳过按钮 —— 用 ExcludeSemantics 防止浮窗切换时 Semantics 自动模拟 tap
+            ExcludeSemantics(
+              excluding: true,
+              child: ElevatedButton.icon(
+                onPressed: _skipSegment,
+                icon: const Icon(Icons.skip_next),
+                label: const Text('跳过'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.exerciseSegment,
+                  foregroundColor: AppColors.onColoredBadge,
+                ),
               ),
             ),
 
